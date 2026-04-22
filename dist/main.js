@@ -39,8 +39,8 @@ const common_1 = require("@nestjs/common");
 const express = __importStar(require("express"));
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
-    app.use(express.json({ limit: '100mb' }));
-    app.use(express.urlencoded({ limit: '100mb', extended: true }));
+    app.use(express.json({ limit: '500mb' }));
+    app.use(express.urlencoded({ limit: '500mb', extended: true }));
     app.enableCors({
         origin: '*',
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',

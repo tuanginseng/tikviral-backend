@@ -12,6 +12,7 @@ export interface VideoDownloadResult {
     mimeType: string;
     metrics: VideoMetrics | null;
     source: string;
+    videoUrl: string;
 }
 export declare class VideoService {
     private readonly configService;

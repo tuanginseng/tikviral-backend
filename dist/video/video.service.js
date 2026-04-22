@@ -24,14 +24,12 @@ let VideoService = VideoService_1 = class VideoService {
             throw new common_1.BadRequestException('URL TikTok không hợp lệ');
         }
         try {
-            this.logger.log(`Trying TikWM for: ${url}`);
             return await this.downloadFromTikWM(url);
         }
         catch (tikwmError) {
             this.logger.warn(`TikWM failed: ${tikwmError.message}. Trying RapidAPI...`);
         }
         try {
-            this.logger.log(`Trying RapidAPI for: ${url}`);
             return await this.downloadFromRapidApi(url);
         }
         catch (rapidError) {
@@ -86,7 +84,7 @@ let VideoService = VideoService_1 = class VideoService {
                 cover: videoData.cover,
             }
             : null;
-        return { videoBase64, mimeType, metrics, source: 'tikwm' };
+        return { videoBase64, mimeType, metrics, source: 'tikwm', videoUrl };
     }
     async downloadFromRapidApi(url) {
         const RAPIDAPI_KEY = this.configService.get('RAPIDAPI_KEY');
@@ -135,7 +133,7 @@ let VideoService = VideoService_1 = class VideoService {
                 cover: videoData.cover || videoData.origin_cover,
             }
             : null;
-        return { videoBase64, mimeType, metrics, source: 'rapidapi' };
+        return { videoBase64, mimeType, metrics, source: 'rapidapi', videoUrl };
     }
     isValidTikTokUrl(url) {
         return /^https?:\/\/(www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)/.test(url);

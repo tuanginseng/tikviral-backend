@@ -15,6 +15,7 @@ export interface VideoDownloadResult {
   mimeType: string;
   metrics: VideoMetrics | null;
   source: string;
+  videoUrl: string;
 }
 
 @Injectable()
@@ -30,7 +31,7 @@ export class VideoService {
 
     // Thử TikWM trước (không cần API key riêng)
     try {
-      this.logger.log(`Trying TikWM for: ${url}`);
+
       return await this.downloadFromTikWM(url);
     } catch (tikwmError: any) {
       this.logger.warn(`TikWM failed: ${tikwmError.message}. Trying RapidAPI...`);
@@ -38,7 +39,7 @@ export class VideoService {
 
     // Fallback: RapidAPI (key lưu server-side, không bao giờ lộ ra frontend)
     try {
-      this.logger.log(`Trying RapidAPI for: ${url}`);
+
       return await this.downloadFromRapidApi(url);
     } catch (rapidError: any) {
       this.logger.error(`RapidAPI also failed: ${rapidError.message}`);
@@ -104,7 +105,7 @@ export class VideoService {
         }
       : null;
 
-    return { videoBase64, mimeType, metrics, source: 'tikwm' };
+    return { videoBase64, mimeType, metrics, source: 'tikwm', videoUrl };
   }
 
   private async downloadFromRapidApi(url: string): Promise<VideoDownloadResult> {
@@ -165,7 +166,7 @@ export class VideoService {
         }
       : null;
 
-    return { videoBase64, mimeType, metrics, source: 'rapidapi' };
+    return { videoBase64, mimeType, metrics, source: 'rapidapi', videoUrl };
   }
 
   private isValidTikTokUrl(url: string): boolean {
