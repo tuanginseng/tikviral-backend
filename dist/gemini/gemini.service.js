@@ -323,6 +323,18 @@ let GeminiService = GeminiService_1 = class GeminiService {
             case 'analyze-video': {
                 if (!dto.videoData && !dto.videoUrl)
                     throw new common_1.BadRequestException('videoData or videoUrl required');
+                if (dto.videoData && !dto.videoUrl) {
+                    if (!dto.userId) {
+                        throw new common_1.BadRequestException('Chức năng tải video lên yêu cầu đăng nhập và gói 90 lượt.');
+                    }
+                    const admin = this.supabaseService.getAdminClient();
+                    const { data: usage, error: usageError } = await admin.rpc('check_usage_only', {
+                        p_user_id: dto.userId
+                    });
+                    if (usageError || !usage || usage.monthly_credits <= 0) {
+                        throw new common_1.BadRequestException('Chức năng tải video lên chỉ dành cho người dùng đăng ký gói 90 lượt.');
+                    }
+                }
                 let inlineData;
                 if (dto.videoUrl) {
                     const response = await fetch(dto.videoUrl);

@@ -283,6 +283,7 @@ export class GeminiService {
    */
   async executeTask(dto: {
     task: string;
+    userId?: string;
     // Phân tích video
     videoData?: string;
     videoUrl?: string;
@@ -309,6 +310,22 @@ export class GeminiService {
     switch (dto.task) {
       case 'analyze-video': {
         if (!dto.videoData && !dto.videoUrl) throw new BadRequestException('videoData or videoUrl required');
+
+        // Security check: Uploaded video (videoData) requires Monthly 90 package
+        if (dto.videoData && !dto.videoUrl) {
+          if (!dto.userId) {
+            throw new BadRequestException('Chức năng tải video lên yêu cầu đăng nhập và gói 90 lượt.');
+          }
+
+          const admin = this.supabaseService.getAdminClient();
+          const { data: usage, error: usageError } = await admin.rpc('check_usage_only', {
+            p_user_id: dto.userId
+          });
+
+          if (usageError || !usage || usage.monthly_credits <= 0) {
+            throw new BadRequestException('Chức năng tải video lên chỉ dành cho người dùng đăng ký gói 90 lượt.');
+          }
+        }
 
         let inlineData;
         if (dto.videoUrl) {

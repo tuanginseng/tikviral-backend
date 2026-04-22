@@ -73,6 +73,7 @@ export declare class GeminiService {
     }>;
     executeTask(dto: {
         task: string;
+        userId?: string;
         videoData?: string;
         videoUrl?: string;
         mimeType?: string;
