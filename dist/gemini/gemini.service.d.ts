@@ -74,6 +74,7 @@ export declare class GeminiService {
     executeTask(dto: {
         task: string;
         videoData?: string;
+        videoUrl?: string;
         mimeType?: string;
         metrics?: {
             play_count?: number;

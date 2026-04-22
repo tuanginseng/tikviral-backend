@@ -8,8 +8,8 @@ export interface VideoMetrics {
     cover?: string;
 }
 export interface VideoDownloadResult {
-    videoBase64: string;
-    mimeType: string;
+    videoBase64?: string;
+    mimeType?: string;
     metrics: VideoMetrics | null;
     source: string;
     videoUrl: string;

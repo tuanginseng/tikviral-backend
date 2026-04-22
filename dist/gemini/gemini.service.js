@@ -321,8 +321,23 @@ let GeminiService = GeminiService_1 = class GeminiService {
         let parts;
         switch (dto.task) {
             case 'analyze-video': {
-                if (!dto.videoData || !dto.mimeType)
-                    throw new common_1.BadRequestException('videoData and mimeType required');
+                if (!dto.videoData && !dto.videoUrl)
+                    throw new common_1.BadRequestException('videoData or videoUrl required');
+                let inlineData;
+                if (dto.videoUrl) {
+                    const response = await fetch(dto.videoUrl);
+                    if (!response.ok)
+                        throw new common_1.BadRequestException('Cannot fetch video from videoUrl');
+                    const buffer = await response.arrayBuffer();
+                    const base64 = Buffer.from(buffer).toString('base64');
+                    const mimeType = response.headers.get('content-type') || 'video/mp4';
+                    inlineData = { data: base64, mimeType };
+                }
+                else {
+                    if (!dto.mimeType)
+                        throw new common_1.BadRequestException('mimeType required when videoData is provided');
+                    inlineData = { data: dto.videoData, mimeType: dto.mimeType };
+                }
                 const m = dto.metrics;
                 const stats = `- Lượt xem: ${m?.play_count?.toLocaleString() || 'N/A'}\n- Lượt thích: ${m?.digg_count?.toLocaleString() || 'N/A'}\n- Bình luận: ${m?.comment_count?.toLocaleString() || 'N/A'}\n- Chia sẻ: ${m?.share_count?.toLocaleString() || 'N/A'}`;
                 let prompt = stats + '\n\n' + settings.systemPrompt;
@@ -335,7 +350,7 @@ let GeminiService = GeminiService_1 = class GeminiService {
                 else if (dto.isViral === 'viral') {
                     prompt += `\n\n**LƯU Ý:** Video được chỉ định là ĐÃ VIRAL. Phân tích yếu tố giúp viral.`;
                 }
-                parts = [{ inlineData: { data: dto.videoData, mimeType: dto.mimeType } }, { text: prompt }];
+                parts = [{ inlineData }, { text: prompt }];
                 break;
             }
             case 'analyze-violation': {
@@ -349,10 +364,25 @@ let GeminiService = GeminiService_1 = class GeminiService {
                 break;
             }
             case 'extract-script': {
-                if (!dto.videoData || !dto.mimeType)
-                    throw new common_1.BadRequestException('videoData and mimeType required');
+                if (!dto.videoData && !dto.videoUrl)
+                    throw new common_1.BadRequestException('videoData or videoUrl required');
+                let inlineData;
+                if (dto.videoUrl) {
+                    const response = await fetch(dto.videoUrl);
+                    if (!response.ok)
+                        throw new common_1.BadRequestException('Cannot fetch video from videoUrl');
+                    const buffer = await response.arrayBuffer();
+                    const base64 = Buffer.from(buffer).toString('base64');
+                    const mimeType = response.headers.get('content-type') || 'video/mp4';
+                    inlineData = { data: base64, mimeType };
+                }
+                else {
+                    if (!dto.mimeType)
+                        throw new common_1.BadRequestException('mimeType required when videoData is provided');
+                    inlineData = { data: dto.videoData, mimeType: dto.mimeType };
+                }
                 const extractPrompt = `Trích xuất tất cả lời thoại, văn bản, và nội dung âm thanh từ video này. Bao gồm:\n\n**LỜI THOẠI/VOICE-OVER:**\n[Tất cả lời nói]\n\n**TEXT TRÊN MÀN HÌNH:**\n[Văn bản xuất hiện]\n\n**NỘI DUNG CHÍNH:**\n[Mô tả chi tiết]\n\n**ÂM THANH/NHẠC:**\n[Mô tả âm thanh]`;
-                parts = [{ inlineData: { data: dto.videoData, mimeType: dto.mimeType } }, { text: extractPrompt }];
+                parts = [{ inlineData }, { text: extractPrompt }];
                 break;
             }
             case 'create-script': {

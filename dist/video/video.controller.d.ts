@@ -1,3 +1,4 @@
+import type { Response } from 'express';
 import { VideoService } from './video.service';
 export declare class VideoController {
     private readonly videoService;
@@ -5,4 +6,5 @@ export declare class VideoController {
     downloadVideo(body: {
         url: string;
     }): Promise<import("./video.service").VideoDownloadResult>;
+    proxyMedia(url: string, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
 }

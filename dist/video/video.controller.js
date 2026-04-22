@@ -23,6 +23,41 @@ let VideoController = class VideoController {
     async downloadVideo(body) {
         return this.videoService.downloadVideo(body.url);
     }
+    async proxyMedia(url, res) {
+        if (!url) {
+            return res.status(common_1.HttpStatus.BAD_REQUEST).send('URL is required');
+        }
+        try {
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': 'https://www.tiktok.com/',
+                }
+            });
+            if (!response.ok) {
+                return res.status(response.status).send(response.statusText);
+            }
+            res.set({
+                'Content-Type': response.headers.get('content-type') || 'application/octet-stream',
+                'Content-Length': response.headers.get('content-length'),
+                'Cache-Control': 'public, max-age=31536000',
+                'Access-Control-Allow-Origin': '*',
+            });
+            if (response.body) {
+                for await (const chunk of response.body) {
+                    res.write(chunk);
+                }
+                res.end();
+            }
+            else {
+                res.end();
+            }
+        }
+        catch (error) {
+            console.error('Proxy error:', error);
+            res.status(common_1.HttpStatus.INTERNAL_SERVER_ERROR).send('Proxy error');
+        }
+    }
 };
 exports.VideoController = VideoController;
 __decorate([
@@ -33,6 +68,14 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], VideoController.prototype, "downloadVideo", null);
+__decorate([
+    (0, common_1.Get)('proxy'),
+    __param(0, (0, common_1.Query)('url')),
+    __param(1, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], VideoController.prototype, "proxyMedia", null);
 exports.VideoController = VideoController = __decorate([
     (0, common_1.Controller)('video'),
     __metadata("design:paramtypes", [video_service_1.VideoService])

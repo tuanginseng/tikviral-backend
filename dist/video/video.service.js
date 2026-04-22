@@ -67,13 +67,8 @@ let VideoService = VideoService_1 = class VideoService {
             throw new Error('TikWM không trả về URL video hợp lệ');
         }
         const videoUrl = `https://www.tikwm.com${videoData.play}`;
-        const videoResponse = await fetch(videoUrl);
-        if (!videoResponse.ok) {
-            throw new Error(`Không thể tải video từ TikWM: ${videoResponse.status}`);
-        }
-        const videoBuffer = await videoResponse.arrayBuffer();
-        const videoBase64 = Buffer.from(videoBuffer).toString('base64');
-        const mimeType = videoResponse.headers.get('content-type') || 'video/mp4';
+        const videoBase64 = '';
+        const mimeType = 'video/mp4';
         const metrics = (videoData.title || videoData.play_count)
             ? {
                 play_count: videoData.play_count || 0,
@@ -84,7 +79,7 @@ let VideoService = VideoService_1 = class VideoService {
                 cover: videoData.cover,
             }
             : null;
-        return { videoBase64, mimeType, metrics, source: 'tikwm', videoUrl };
+        return { metrics, source: 'tikwm', videoUrl, videoBase64, mimeType };
     }
     async downloadFromRapidApi(url) {
         const RAPIDAPI_KEY = this.configService.get('RAPIDAPI_KEY');
@@ -116,13 +111,8 @@ let VideoService = VideoService_1 = class VideoService {
         if (!videoUrl) {
             throw new Error('Không tìm thấy URL video trong RapidAPI response');
         }
-        const videoResponse = await fetch(videoUrl);
-        if (!videoResponse.ok) {
-            throw new Error(`Không thể tải video từ RapidAPI URL: ${videoResponse.status}`);
-        }
-        const videoBuffer = await videoResponse.arrayBuffer();
-        const videoBase64 = Buffer.from(videoBuffer).toString('base64');
-        const mimeType = videoResponse.headers.get('content-type') || 'video/mp4';
+        const videoBase64 = '';
+        const mimeType = 'video/mp4';
         const metrics = (videoData.title || videoData.play_count)
             ? {
                 play_count: videoData.play_count || 0,
@@ -133,7 +123,7 @@ let VideoService = VideoService_1 = class VideoService {
                 cover: videoData.cover || videoData.origin_cover,
             }
             : null;
-        return { videoBase64, mimeType, metrics, source: 'rapidapi', videoUrl };
+        return { metrics, source: 'rapidapi', videoUrl, videoBase64, mimeType };
     }
     isValidTikTokUrl(url) {
         return /^https?:\/\/(www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)/.test(url);

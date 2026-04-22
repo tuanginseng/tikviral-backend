@@ -11,8 +11,8 @@ export interface VideoMetrics {
 }
 
 export interface VideoDownloadResult {
-  videoBase64: string;
-  mimeType: string;
+  videoBase64?: string;
+  mimeType?: string;
   metrics: VideoMetrics | null;
   source: string;
   videoUrl: string;
@@ -84,15 +84,9 @@ export class VideoService {
     }
 
     const videoUrl = `https://www.tikwm.com${videoData.play}`;
-    const videoResponse = await fetch(videoUrl);
 
-    if (!videoResponse.ok) {
-      throw new Error(`Không thể tải video từ TikWM: ${videoResponse.status}`);
-    }
-
-    const videoBuffer = await videoResponse.arrayBuffer();
-    const videoBase64 = Buffer.from(videoBuffer).toString('base64');
-    const mimeType = videoResponse.headers.get('content-type') || 'video/mp4';
+    const videoBase64 = '';
+    const mimeType = 'video/mp4';
 
     const metrics: VideoMetrics | null = (videoData.title || videoData.play_count)
       ? {
@@ -105,7 +99,7 @@ export class VideoService {
         }
       : null;
 
-    return { videoBase64, mimeType, metrics, source: 'tikwm', videoUrl };
+    return { metrics, source: 'tikwm', videoUrl, videoBase64, mimeType };
   }
 
   private async downloadFromRapidApi(url: string): Promise<VideoDownloadResult> {
@@ -146,14 +140,8 @@ export class VideoService {
       throw new Error('Không tìm thấy URL video trong RapidAPI response');
     }
 
-    const videoResponse = await fetch(videoUrl);
-    if (!videoResponse.ok) {
-      throw new Error(`Không thể tải video từ RapidAPI URL: ${videoResponse.status}`);
-    }
-
-    const videoBuffer = await videoResponse.arrayBuffer();
-    const videoBase64 = Buffer.from(videoBuffer).toString('base64');
-    const mimeType = videoResponse.headers.get('content-type') || 'video/mp4';
+    const videoBase64 = '';
+    const mimeType = 'video/mp4';
 
     const metrics: VideoMetrics | null = (videoData.title || videoData.play_count)
       ? {
@@ -166,7 +154,7 @@ export class VideoService {
         }
       : null;
 
-    return { videoBase64, mimeType, metrics, source: 'rapidapi', videoUrl };
+    return { metrics, source: 'rapidapi', videoUrl, videoBase64, mimeType };
   }
 
   private isValidTikTokUrl(url: string): boolean {
