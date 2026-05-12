@@ -424,18 +424,33 @@ let GeminiService = GeminiService_1 = class GeminiService {
         const { result } = await this.generateContent(parts, settings.model);
         return { result };
     }
-    buildScriptPrompt(analysisResult, transcript, hookType) {
+    buildScriptPrompt(analysisResult, transcript, hookType, isShoppable = false) {
         const transcriptSection = transcript
             ? `\n\n**TRANSCRIPT GỐC:**\n${transcript}`
             : '';
         const hookSection = hookType
             ? `\n\n**YÊU CẦU HOOK:** Sử dụng kiểu hook "${hookType}" cho scene đầu tiên.`
             : '';
-        return `Dựa trên phân tích video sau đây:
-${analysisResult}${transcriptSection}${hookSection}
-
-Hãy tạo kịch bản video TikTok mới theo cấu trúc JSON sau:
-{
+        const shoppableSection = isShoppable
+            ? `\n\n**YÊU CẦU ĐẶC BIỆT DÀNH CHO VIDEO GẮN GIỎ HÀNG (TIKTOK SHOP):**
+- KHÔNG review sản phẩm một cách trực diện và khô khan (VD: không dùng "Đây là sản phẩm X, có tính năng Y").
+- BẮT BUỘC áp dụng công thức: [Nỗi tự ti/Vấn đề thực tế] + [Giải pháp cụ thể] + [Tính ứng dụng đời sống].
+- Video phải bán "cảm giác được giải quyết vấn đề" trước khi bán sản phẩm. 
+- Mở đầu video phải đi thẳng vào một insight: Khán giả đang tự ti điều gì, sợ điều gì, hoặc gặp rắc rối gì trong đời sống? (Ví dụ: Sợ xót tiền khi rơi vỡ màn hình điện thoại, dán kính cường lực hay bị bọt khí, tay vụng về không tự dán được...).
+- Sản phẩm chỉ xuất hiện ở giữa video như một "lời giải" hoàn hảo và tự nhiên cho vấn đề vừa nêu.`
+            : '';
+        const jsonStructure = isShoppable
+            ? `{
+  "scenes": [
+    { "title": "1. Mở đầu bằng Vấn đề/Nỗi đau (HOOK)", "description": "[mô tả visual]", "script": "[lời thoại đánh trúng insight]" },
+    { "title": "2. Khơi gợi Đồng cảm & Hậu quả", "description": "[mô tả visual]", "script": "[lời thoại]" },
+    { "title": "3. Trình bày Giải pháp (Sản phẩm)", "description": "[mô tả visual]", "script": "[lời thoại]" },
+    { "title": "4. Tính ứng dụng đời sống/Test thực tế", "description": "[mô tả visual]", "script": "[lời thoại]" },
+    { "title": "5. So sánh Trước & Sau", "description": "[mô tả visual]", "script": "[lời thoại]" },
+    { "title": "6. Kêu gọi Hành động (Chỉ vào giỏ hàng)", "description": "[mô tả visual]", "script": "[lời thoại]" }
+  ]
+}`
+            : `{
   "scenes": [
     { "title": "1. Mở đầu bằng Câu hỏi (HOOK)", "description": "[mô tả visual]", "script": "[lời thoại]" },
     { "title": "2. Trình bày Giải pháp", "description": "[mô tả visual]", "script": "[lời thoại]" },
@@ -444,9 +459,14 @@ Hãy tạo kịch bản video TikTok mới theo cấu trúc JSON sau:
     { "title": "5. Minh họa Kết quả", "description": "[mô tả visual]", "script": "[lời thoại]" },
     { "title": "6. Kêu gọi Hành động", "description": "[mô tả visual]", "script": "[lời thoại]" }
   ]
-}
+}`;
+        return `Dựa trên phân tích video sau đây:
+${analysisResult}${transcriptSection}${hookSection}${shoppableSection}
 
-Chỉ trả về JSON, không thêm giải thích.`;
+Hãy tạo kịch bản video TikTok mới theo cấu trúc JSON sau:
+${jsonStructure}
+
+độ dài video 60-120 giây. Chỉ trả về JSON, không thêm giải thích.`;
     }
     buildTitlePrompt(scriptContent, titleType) {
         return `Dựa trên kịch bản video TikTok sau:
