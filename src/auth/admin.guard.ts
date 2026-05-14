@@ -9,8 +9,10 @@ export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const body = request.body || {};
-    // Extract token from body like the current Deno functions do
-    const adminToken = typeof body.admin_token === 'string' ? body.admin_token.trim() : null;
+    // Check body first, then fallback to X-Admin-Token header
+    const adminToken =
+      (typeof body.admin_token === 'string' ? body.admin_token.trim() : null) ||
+      (typeof request.headers['x-admin-token'] === 'string' ? request.headers['x-admin-token'].trim() : null);
 
     if (!adminToken) {
       throw new UnauthorizedException('Unauthorized. Admin token required.');

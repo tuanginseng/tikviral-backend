@@ -59,4 +59,44 @@ export declare class UsageService {
         code: any;
         created: boolean;
     }>;
+    createPaymentTransaction(userId: string, payload: {
+        reference_code: string;
+        plan_tier: string;
+        amount: number;
+        expires_at: string;
+    }): Promise<{
+        id: any;
+    }>;
+    getPaymentTransactionStatus(userId: string, transactionId: string): Promise<{
+        status: any;
+    }>;
+    getHistory(userId: string, table: string, page: number, perPage: number): Promise<{
+        data: any[];
+        count: number;
+    }>;
+    getReferralStats(userId: string, dateFrom: string, dateTo: string, page: number, perPage: number): Promise<{
+        code: any;
+        referralsCount: number;
+        paidReferralsCount: number;
+        commissions: {
+            id: any;
+            amount: any;
+            commission_amount: any;
+            status: any;
+            created_at: any;
+        }[];
+        commissionsTotal: number;
+        profile: {
+            bank_account_holder: any;
+            bank_account_number: any;
+            bank_name: any;
+        };
+    }>;
+    updateBankAccount(userId: string, payload: {
+        bank_account_holder: string | null;
+        bank_account_number: string | null;
+        bank_name: string | null;
+    }): Promise<{
+        success: boolean;
+    }>;
 }

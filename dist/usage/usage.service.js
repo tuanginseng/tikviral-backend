@@ -143,6 +143,103 @@ let UsageService = UsageService_1 = class UsageService {
         }
         return { code, created: true };
     }
+    async createPaymentTransaction(userId, payload) {
+        const supabase = this.supabaseService.getAdminClient();
+        const { data, error } = await supabase
+            .from('payment_transactions')
+            .insert({ ...payload, user_id: userId, status: 'pending' })
+            .select('id')
+            .single();
+        if (error) {
+            this.logger.error('createPaymentTransaction error: ' + error.message);
+            throw new Error(error.message);
+        }
+        return data;
+    }
+    async getPaymentTransactionStatus(userId, transactionId) {
+        const supabase = this.supabaseService.getAdminClient();
+        const { data, error } = await supabase
+            .from('payment_transactions')
+            .select('status')
+            .eq('id', transactionId)
+            .eq('user_id', userId)
+            .single();
+        if (error)
+            throw new Error(error.message);
+        return data;
+    }
+    async getHistory(userId, table, page, perPage) {
+        const supabase = this.supabaseService.getAdminClient();
+        const allowed = ['video_analyses', 'generated_scripts', 'script_checks', 'violation_appeals'];
+        if (!allowed.includes(table))
+            throw new Error('Invalid table');
+        const from = (page - 1) * perPage;
+        const to = from + perPage - 1;
+        const { data, error, count } = await supabase
+            .from(table)
+            .select('*', { count: 'exact' })
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .range(from, to);
+        if (error) {
+            this.logger.error('getHistory(' + table + ') error: ' + error.message);
+            throw new Error(error.message);
+        }
+        return { data: data ?? [], count: count ?? 0 };
+    }
+    async getReferralStats(userId, dateFrom, dateTo, page, perPage) {
+        const supabase = this.supabaseService.getAdminClient();
+        const { data: codeData } = await supabase
+            .from('affiliate_codes')
+            .select('code')
+            .eq('user_id', userId)
+            .maybeSingle();
+        const { count: referralsCount } = await supabase
+            .from('referrals')
+            .select('*', { count: 'exact', head: true })
+            .eq('referrer_id', userId);
+        const { data: paidReferrals } = await supabase
+            .from('referrals')
+            .select('id')
+            .eq('referrer_id', userId)
+            .not('first_payment_at', 'is', null);
+        const paidReferralsCount = paidReferrals?.length ?? 0;
+        const from = (page - 1) * perPage;
+        const to = from + perPage - 1;
+        const { data: commissionRows, count } = await supabase
+            .from('affiliate_commissions')
+            .select('id, amount, commission_amount, status, created_at', { count: 'exact' })
+            .eq('referrer_id', userId)
+            .gte('created_at', dateFrom)
+            .lte('created_at', dateTo)
+            .order('created_at', { ascending: false })
+            .range(from, to);
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('bank_account_holder, bank_account_number, bank_name')
+            .eq('id', userId)
+            .single();
+        return {
+            code: codeData?.code ?? null,
+            referralsCount: referralsCount ?? 0,
+            paidReferralsCount,
+            commissions: commissionRows ?? [],
+            commissionsTotal: count ?? 0,
+            profile: profile ?? { bank_account_holder: null, bank_account_number: null, bank_name: null }
+        };
+    }
+    async updateBankAccount(userId, payload) {
+        const supabase = this.supabaseService.getAdminClient();
+        const { error } = await supabase
+            .from('profiles')
+            .update(payload)
+            .eq('id', userId);
+        if (error) {
+            this.logger.error('updateBankAccount error: ' + error.message);
+            throw new Error(error.message);
+        }
+        return { success: true };
+    }
 };
 exports.UsageService = UsageService;
 exports.UsageService = UsageService = UsageService_1 = __decorate([

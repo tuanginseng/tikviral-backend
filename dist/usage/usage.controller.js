@@ -124,6 +124,55 @@ let UsageController = class UsageController {
             throw new common_1.HttpException({ message: error.message, code: error.code }, common_1.HttpStatus.UNPROCESSABLE_ENTITY);
         }
     }
+    async createPayment(req, body) {
+        try {
+            return await this.usageService.createPaymentTransaction(req.user.id, {
+                reference_code: body.reference_code,
+                plan_tier: body.plan_tier,
+                amount: body.amount,
+                expires_at: body.expires_at,
+            });
+        }
+        catch (error) {
+            throw new common_1.HttpException(error.message, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    async getPaymentStatus(req, body) {
+        try {
+            return await this.usageService.getPaymentTransactionStatus(req.user.id, body.transaction_id);
+        }
+        catch (error) {
+            throw new common_1.HttpException(error.message, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    async getHistory(req, body) {
+        try {
+            return await this.usageService.getHistory(req.user.id, body.table, body.page ?? 1, body.per_page ?? 10);
+        }
+        catch (error) {
+            throw new common_1.HttpException(error.message, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    async getReferralStats(req, body) {
+        try {
+            return await this.usageService.getReferralStats(req.user.id, body.dateFrom, body.dateTo, body.page ?? 1, body.perPage ?? 10);
+        }
+        catch (error) {
+            throw new common_1.HttpException(error.message, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    async updateBankAccount(req, body) {
+        try {
+            return await this.usageService.updateBankAccount(req.user.id, {
+                bank_account_holder: body.bank_account_holder,
+                bank_account_number: body.bank_account_number,
+                bank_name: body.bank_name,
+            });
+        }
+        catch (error) {
+            throw new common_1.HttpException(error.message, common_1.HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 };
 exports.UsageController = UsageController;
 __decorate([
@@ -203,6 +252,51 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], UsageController.prototype, "ensureAffiliateCode", null);
+__decorate([
+    (0, common_1.Post)('create-payment'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsageController.prototype, "createPayment", null);
+__decorate([
+    (0, common_1.Post)('payment-status'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsageController.prototype, "getPaymentStatus", null);
+__decorate([
+    (0, common_1.Post)('get-history'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsageController.prototype, "getHistory", null);
+__decorate([
+    (0, common_1.Post)('referral-stats'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsageController.prototype, "getReferralStats", null);
+__decorate([
+    (0, common_1.Post)('update-bank-account'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsageController.prototype, "updateBankAccount", null);
 exports.UsageController = UsageController = __decorate([
     (0, common_1.Controller)('usage'),
     (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),

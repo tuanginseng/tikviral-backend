@@ -36,4 +36,37 @@ export declare class UsageController {
         code: any;
         created: boolean;
     }>;
+    createPayment(req: any, body: any): Promise<{
+        id: any;
+    }>;
+    getPaymentStatus(req: any, body: {
+        transaction_id: string;
+    }): Promise<{
+        status: any;
+    }>;
+    getHistory(req: any, body: any): Promise<{
+        data: any[];
+        count: number;
+    }>;
+    getReferralStats(req: any, body: any): Promise<{
+        code: any;
+        referralsCount: number;
+        paidReferralsCount: number;
+        commissions: {
+            id: any;
+            amount: any;
+            commission_amount: any;
+            status: any;
+            created_at: any;
+        }[];
+        commissionsTotal: number;
+        profile: {
+            bank_account_holder: any;
+            bank_account_number: any;
+            bank_name: any;
+        };
+    }>;
+    updateBankAccount(req: any, body: any): Promise<{
+        success: boolean;
+    }>;
 }

@@ -142,5 +142,80 @@ export class UsageController {
       );
     }
   }
+
+  /** POST /usage/create-payment — Tạo payment transaction mới */
+  @Post('create-payment')
+  @HttpCode(HttpStatus.OK)
+  async createPayment(@Req() req: any, @Body() body: any) {
+    try {
+      return await this.usageService.createPaymentTransaction(req.user.id, {
+        reference_code: body.reference_code,
+        plan_tier: body.plan_tier,
+        amount: body.amount,
+        expires_at: body.expires_at,
+      });
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  /** POST /usage/payment-status — Kiểm tra trạng thái payment */
+  @Post('payment-status')
+  @HttpCode(HttpStatus.OK)
+  async getPaymentStatus(@Req() req: any, @Body() body: { transaction_id: string }) {
+    try {
+      return await this.usageService.getPaymentTransactionStatus(req.user.id, body.transaction_id);
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  /** POST /usage/get-history — Lấy lịch sử của user */
+  @Post('get-history')
+  @HttpCode(HttpStatus.OK)
+  async getHistory(@Req() req: any, @Body() body: any) {
+    try {
+      return await this.usageService.getHistory(
+        req.user.id,
+        body.table,
+        body.page ?? 1,
+        body.per_page ?? 10,
+      );
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  /** POST /usage/referral-stats — Lấy thống kê referral */
+  @Post('referral-stats')
+  @HttpCode(HttpStatus.OK)
+  async getReferralStats(@Req() req: any, @Body() body: any) {
+    try {
+      return await this.usageService.getReferralStats(
+        req.user.id,
+        body.dateFrom,
+        body.dateTo,
+        body.page ?? 1,
+        body.perPage ?? 10
+      );
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  /** POST /usage/update-bank-account — Cập nhật tài khoản ngân hàng */
+  @Post('update-bank-account')
+  @HttpCode(HttpStatus.OK)
+  async updateBankAccount(@Req() req: any, @Body() body: any) {
+    try {
+      return await this.usageService.updateBankAccount(req.user.id, {
+        bank_account_holder: body.bank_account_holder,
+        bank_account_number: body.bank_account_number,
+        bank_name: body.bank_name,
+      });
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
 }
 

@@ -54,7 +54,8 @@ let AdminGuard = class AdminGuard {
     canActivate(context) {
         const request = context.switchToHttp().getRequest();
         const body = request.body || {};
-        const adminToken = typeof body.admin_token === 'string' ? body.admin_token.trim() : null;
+        const adminToken = (typeof body.admin_token === 'string' ? body.admin_token.trim() : null) ||
+            (typeof request.headers['x-admin-token'] === 'string' ? request.headers['x-admin-token'].trim() : null);
         if (!adminToken) {
             throw new common_1.UnauthorizedException('Unauthorized. Admin token required.');
         }
