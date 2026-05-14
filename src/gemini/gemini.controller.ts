@@ -1,7 +1,9 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { GeminiService } from './gemini.service';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 
 @Controller('gemini')
+@UseGuards(SupabaseAuthGuard)
 export class GeminiController {
   constructor(private readonly geminiService: GeminiService) {}
 

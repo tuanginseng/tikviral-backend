@@ -49,6 +49,10 @@ export declare class AffiliateService {
         success: boolean;
         message: string;
     }>;
+    recordReferralByUser(user: any, refCode: string): Promise<{
+        success: boolean;
+        message: string;
+    }>;
     uploadAffiliateImage(imageData: string, mimeType: string, fileName: string): Promise<{
         publicUrl: string;
     }>;

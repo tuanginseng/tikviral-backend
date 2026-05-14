@@ -244,6 +244,12 @@ export class AffiliateService {
     
     if (userError || !user) throw new UnauthorizedException("Invalid session");
 
+    return this.recordReferralByUser(user, refCode);
+  }
+
+  async recordReferralByUser(user: any, refCode: string) {
+    const admin = this.supabaseService.getAdminClient();
+
     const { data: affiliateRow } = await admin.from("affiliate_codes").select("user_id").eq("code", refCode).eq("is_active", true).maybeSingle();
     if (!affiliateRow) return { success: false, message: "Mã giới thiệu không hợp lệ" };
 

@@ -16,6 +16,7 @@ exports.AffiliateController = void 0;
 const common_1 = require("@nestjs/common");
 const affiliate_service_1 = require("./affiliate.service");
 const admin_guard_1 = require("../auth/admin.guard");
+const supabase_auth_guard_1 = require("../auth/supabase-auth.guard");
 let AffiliateController = class AffiliateController {
     affiliateService;
     constructor(affiliateService) {
@@ -31,9 +32,7 @@ let AffiliateController = class AffiliateController {
         return this.affiliateService.manageCommissions(body);
     }
     async recordReferral(req, body) {
-        const authHeader = req.headers['authorization'];
-        const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : '';
-        return this.affiliateService.recordReferral(token, body.ref_code);
+        return this.affiliateService.recordReferralByUser(req.user, body.ref_code);
     }
     async uploadAffiliateImage(body) {
         return this.affiliateService.uploadAffiliateImage(body.imageData, body.mimeType, body.fileName);
@@ -42,6 +41,7 @@ let AffiliateController = class AffiliateController {
 exports.AffiliateController = AffiliateController;
 __decorate([
     (0, common_1.Post)('sync-kalodata-products'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -68,6 +68,7 @@ __decorate([
 ], AffiliateController.prototype, "adminAffiliateCommissions", null);
 __decorate([
     (0, common_1.Post)('record-referral'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Body)()),
@@ -77,6 +78,7 @@ __decorate([
 ], AffiliateController.prototype, "recordReferral", null);
 __decorate([
     (0, common_1.Post)('upload-affiliate-image'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),

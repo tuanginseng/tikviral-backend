@@ -17,6 +17,7 @@ const affiliate_module_1 = require("./affiliate/affiliate.module");
 const gemini_module_1 = require("./gemini/gemini.module");
 const settings_module_1 = require("./settings/settings.module");
 const video_module_1 = require("./video/video.module");
+const usage_module_1 = require("./usage/usage.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -32,6 +33,7 @@ exports.AppModule = AppModule = __decorate([
             gemini_module_1.GeminiModule,
             settings_module_1.SettingsModule,
             video_module_1.VideoModule,
+            usage_module_1.UsageModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

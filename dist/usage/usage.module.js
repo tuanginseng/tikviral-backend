@@ -6,20 +6,20 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.AuthModule = void 0;
+exports.UsageModule = void 0;
 const common_1 = require("@nestjs/common");
-const auth_controller_1 = require("./auth.controller");
-const auth_service_1 = require("./auth.service");
-const supabase_auth_guard_1 = require("./supabase-auth.guard");
-const admin_guard_1 = require("./admin.guard");
-let AuthModule = class AuthModule {
+const usage_controller_1 = require("./usage.controller");
+const usage_service_1 = require("./usage.service");
+const auth_module_1 = require("../auth/auth.module");
+let UsageModule = class UsageModule {
 };
-exports.AuthModule = AuthModule;
-exports.AuthModule = AuthModule = __decorate([
+exports.UsageModule = UsageModule;
+exports.UsageModule = UsageModule = __decorate([
     (0, common_1.Module)({
-        controllers: [auth_controller_1.AuthController],
-        providers: [auth_service_1.AuthService, supabase_auth_guard_1.SupabaseAuthGuard, admin_guard_1.AdminGuard],
-        exports: [auth_service_1.AuthService, supabase_auth_guard_1.SupabaseAuthGuard, admin_guard_1.AdminGuard],
+        imports: [auth_module_1.AuthModule],
+        controllers: [usage_controller_1.UsageController],
+        providers: [usage_service_1.UsageService],
+        exports: [usage_service_1.UsageService],
     })
-], AuthModule);
-//# sourceMappingURL=auth.module.js.map
+], UsageModule);
+//# sourceMappingURL=usage.module.js.map

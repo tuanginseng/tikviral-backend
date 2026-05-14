@@ -1,7 +1,9 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { SettingsService } from './settings.service';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 
 @Controller('settings')
+@UseGuards(SupabaseAuthGuard)
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 

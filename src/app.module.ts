@@ -8,6 +8,7 @@ import { AffiliateModule } from './affiliate/affiliate.module';
 import { GeminiModule } from './gemini/gemini.module';
 import { SettingsModule } from './settings/settings.module';
 import { VideoModule } from './video/video.module';
+import { UsageModule } from './usage/usage.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { VideoModule } from './video/video.module';
     GeminiModule,
     SettingsModule,
     VideoModule,
+    UsageModule,
   ],
   controllers: [AppController],
   providers: [AppService],

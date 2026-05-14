@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GeminiController = void 0;
 const common_1 = require("@nestjs/common");
 const gemini_service_1 = require("./gemini.service");
+const supabase_auth_guard_1 = require("../auth/supabase-auth.guard");
 let GeminiController = class GeminiController {
     geminiService;
     constructor(geminiService) {
@@ -69,6 +70,7 @@ __decorate([
 ], GeminiController.prototype, "executeTask", null);
 exports.GeminiController = GeminiController = __decorate([
     (0, common_1.Controller)('gemini'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     __metadata("design:paramtypes", [gemini_service_1.GeminiService])
 ], GeminiController);
 //# sourceMappingURL=gemini.controller.js.map

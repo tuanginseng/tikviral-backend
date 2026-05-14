@@ -243,6 +243,10 @@ let AffiliateService = class AffiliateService {
         const { data: { user }, error: userError } = await admin.auth.getUser(token);
         if (userError || !user)
             throw new common_1.UnauthorizedException("Invalid session");
+        return this.recordReferralByUser(user, refCode);
+    }
+    async recordReferralByUser(user, refCode) {
+        const admin = this.supabaseService.getAdminClient();
         const { data: affiliateRow } = await admin.from("affiliate_codes").select("user_id").eq("code", refCode).eq("is_active", true).maybeSingle();
         if (!affiliateRow)
             return { success: false, message: "Mã giới thiệu không hợp lệ" };

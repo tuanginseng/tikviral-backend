@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SettingsController = void 0;
 const common_1 = require("@nestjs/common");
 const settings_service_1 = require("./settings.service");
+const supabase_auth_guard_1 = require("../auth/supabase-auth.guard");
 let SettingsController = class SettingsController {
     settingsService;
     constructor(settingsService) {
@@ -35,6 +36,7 @@ __decorate([
 ], SettingsController.prototype, "manageAdminSettings", null);
 exports.SettingsController = SettingsController = __decorate([
     (0, common_1.Controller)('settings'),
+    (0, common_1.UseGuards)(supabase_auth_guard_1.SupabaseAuthGuard),
     __metadata("design:paramtypes", [settings_service_1.SettingsService])
 ], SettingsController);
 //# sourceMappingURL=settings.controller.js.map
