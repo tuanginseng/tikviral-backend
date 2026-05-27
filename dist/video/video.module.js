@@ -10,11 +10,13 @@ exports.VideoModule = void 0;
 const common_1 = require("@nestjs/common");
 const video_controller_1 = require("./video.controller");
 const video_service_1 = require("./video.service");
+const usage_module_1 = require("../usage/usage.module");
 let VideoModule = class VideoModule {
 };
 exports.VideoModule = VideoModule;
 exports.VideoModule = VideoModule = __decorate([
     (0, common_1.Module)({
+        imports: [usage_module_1.UsageModule],
         controllers: [video_controller_1.VideoController],
         providers: [video_service_1.VideoService],
         exports: [video_service_1.VideoService],

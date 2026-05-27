@@ -67,7 +67,12 @@ export class UsageService {
     const supabase = this.supabaseService.getAdminClient();
     const { error } = await supabase
       .from('profiles')
-      .update({ subscription_tier: 'free', subscription_end_date: null })
+      .update({ 
+        subscription_tier: 'free', 
+        subscription_end_date: null,
+        monthly_credit_balance: 0,
+        monthly_credit_expires_at: null
+      })
       .eq('id', userId);
 
     if (error) {
@@ -244,7 +249,7 @@ export class UsageService {
 
   async getHistory(userId: string, table: string, page: number, perPage: number) {
     const supabase = this.supabaseService.getAdminClient();
-    const allowed = ['video_analyses', 'generated_scripts', 'script_checks', 'violation_appeals'];
+    const allowed = ['video_analyses', 'generated_scripts', 'script_checks', 'violation_appeals', 'upscaled_videos'];
     if (!allowed.includes(table)) throw new Error('Invalid table');
     const from = (page - 1) * perPage;
     const to = from + perPage - 1;
@@ -329,5 +334,117 @@ export class UsageService {
       throw new Error(error.message);
     }
     return { success: true };
+  }
+
+  /**
+   * Trừ một lượng credit tùy chỉnh dựa trên số phút xử lý video (làm tròn lên).
+   */
+  async deductCredits(userId: string, amount: number) {
+    if (amount <= 0) return { success: true };
+    const supabase = this.supabaseService.getAdminClient();
+
+    // 1. Lấy profile hiện tại của user
+    const { data: profile, error: getError } = await supabase
+      .from('profiles')
+      .select('monthly_credit_balance, credit_balance, monthly_usage_count')
+      .eq('id', userId)
+      .single();
+
+    if (getError || !profile) {
+      this.logger.error(`deductCredits error getting profile for user ${userId}: ${getError?.message}`);
+      return { success: false, error: 'Không tìm thấy profile' };
+    }
+
+    let remainingToDeduct = amount;
+    let newMonthlyBalance = profile.monthly_credit_balance || 0;
+    let newPurchasedBalance = profile.credit_balance || 0;
+    let newUsageCount = profile.monthly_usage_count || 0;
+
+    // A. Trừ monthly credits trước
+    if (newMonthlyBalance > 0) {
+      const deductFromMonthly = Math.min(newMonthlyBalance, remainingToDeduct);
+      newMonthlyBalance -= deductFromMonthly;
+      remainingToDeduct -= deductFromMonthly;
+    }
+
+    // B. Nếu vẫn còn dư, trừ sang purchased credits
+    if (remainingToDeduct > 0 && newPurchasedBalance > 0) {
+      const deductFromPurchased = Math.min(newPurchasedBalance, remainingToDeduct);
+      newPurchasedBalance -= deductFromPurchased;
+      remainingToDeduct -= deductFromPurchased;
+    }
+
+    // C. Nếu vẫn còn dư (Phương án B: Trừ kịch sàn về 0, không đi âm và không cộng dồn vào lượt miễn phí)
+    if (remainingToDeduct > 0) {
+      this.logger.log(`[deductCredits] User ${userId} ran out of credits. Capped at 0 (Option B - ignored remaining ${remainingToDeduct} credits).`);
+      remainingToDeduct = 0;
+    }
+
+    // 2. Cập nhật lại vào database
+    // NOTE: Không reset subscription_tier về 'free' khi monthly_credit_balance = 0.
+    // Việc downgrade chỉ được thực hiện bởi resetExpiredSubscription() khi subscription_end_date đã qua.
+    // Nếu cứ reset ở đây thì user mua gói tháng nhưng dùng 1 video sẽ bị hạ cấp về free.
+    const updatePayload: any = {
+      monthly_credit_balance: newMonthlyBalance,
+      credit_balance: newPurchasedBalance,
+      monthly_usage_count: newUsageCount,
+    };
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update(updatePayload)
+      .eq('id', userId);
+
+    if (updateError) {
+      this.logger.error(`deductCredits error updating profile for user ${userId}: ${updateError.message}`);
+      return { success: false, error: updateError.message };
+    }
+
+    this.logger.log(`Successfully deducted ${amount} credits for user ${userId}. New balances: monthly=${newMonthlyBalance}, purchased=${newPurchasedBalance}, usage=${newUsageCount}`);
+    return { success: true };
+  }
+
+  /**
+   * Hoàn trả lại 1 credit cho user khi hủy tiến trình làm nét video
+   */
+  async refundCredit(userId: string) {
+    const supabase = this.supabaseService.getAdminClient();
+    try {
+      const { data: profile, error: getError } = await supabase
+        .from('profiles')
+        .select('monthly_credit_balance, subscription_tier')
+        .eq('id', userId)
+        .single();
+
+      if (getError || !profile) {
+        this.logger.error(`refundCredit error getting profile for user ${userId}: ${getError?.message}`);
+        return { success: false, error: 'Không tìm thấy profile' };
+      }
+
+      const newBalance = (profile.monthly_credit_balance || 0) + 1;
+      const updatePayload: any = {
+        monthly_credit_balance: newBalance,
+      };
+
+      if (profile.subscription_tier === 'free') {
+        updatePayload.subscription_tier = 'premium';
+      }
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', userId);
+
+      if (updateError) {
+        this.logger.error(`refundCredit error updating profile for user ${userId}: ${updateError.message}`);
+        return { success: false, error: updateError.message };
+      }
+
+      this.logger.log(`Successfully refunded 1 credit for user ${userId}. New monthly balance: ${newBalance}`);
+      return { success: true };
+    } catch (e: any) {
+      this.logger.error(`refundCredit exception for user ${userId}: ${e.message}`);
+      return { success: false, error: e.message };
+    }
   }
 }

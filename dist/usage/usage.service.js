@@ -58,7 +58,12 @@ let UsageService = UsageService_1 = class UsageService {
         const supabase = this.supabaseService.getAdminClient();
         const { error } = await supabase
             .from('profiles')
-            .update({ subscription_tier: 'free', subscription_end_date: null })
+            .update({
+            subscription_tier: 'free',
+            subscription_end_date: null,
+            monthly_credit_balance: 0,
+            monthly_credit_expires_at: null
+        })
             .eq('id', userId);
         if (error) {
             this.logger.error(`resetExpiredSubscription error for user ${userId}: ${error.message}`);
@@ -170,7 +175,7 @@ let UsageService = UsageService_1 = class UsageService {
     }
     async getHistory(userId, table, page, perPage) {
         const supabase = this.supabaseService.getAdminClient();
-        const allowed = ['video_analyses', 'generated_scripts', 'script_checks', 'violation_appeals'];
+        const allowed = ['video_analyses', 'generated_scripts', 'script_checks', 'violation_appeals', 'upscaled_videos'];
         if (!allowed.includes(table))
             throw new Error('Invalid table');
         const from = (page - 1) * perPage;
@@ -239,6 +244,88 @@ let UsageService = UsageService_1 = class UsageService {
             throw new Error(error.message);
         }
         return { success: true };
+    }
+    async deductCredits(userId, amount) {
+        if (amount <= 0)
+            return { success: true };
+        const supabase = this.supabaseService.getAdminClient();
+        const { data: profile, error: getError } = await supabase
+            .from('profiles')
+            .select('monthly_credit_balance, credit_balance, monthly_usage_count')
+            .eq('id', userId)
+            .single();
+        if (getError || !profile) {
+            this.logger.error(`deductCredits error getting profile for user ${userId}: ${getError?.message}`);
+            return { success: false, error: 'Không tìm thấy profile' };
+        }
+        let remainingToDeduct = amount;
+        let newMonthlyBalance = profile.monthly_credit_balance || 0;
+        let newPurchasedBalance = profile.credit_balance || 0;
+        let newUsageCount = profile.monthly_usage_count || 0;
+        if (newMonthlyBalance > 0) {
+            const deductFromMonthly = Math.min(newMonthlyBalance, remainingToDeduct);
+            newMonthlyBalance -= deductFromMonthly;
+            remainingToDeduct -= deductFromMonthly;
+        }
+        if (remainingToDeduct > 0 && newPurchasedBalance > 0) {
+            const deductFromPurchased = Math.min(newPurchasedBalance, remainingToDeduct);
+            newPurchasedBalance -= deductFromPurchased;
+            remainingToDeduct -= deductFromPurchased;
+        }
+        if (remainingToDeduct > 0) {
+            this.logger.log(`[deductCredits] User ${userId} ran out of credits. Capped at 0 (Option B - ignored remaining ${remainingToDeduct} credits).`);
+            remainingToDeduct = 0;
+        }
+        const updatePayload = {
+            monthly_credit_balance: newMonthlyBalance,
+            credit_balance: newPurchasedBalance,
+            monthly_usage_count: newUsageCount,
+        };
+        const { error: updateError } = await supabase
+            .from('profiles')
+            .update(updatePayload)
+            .eq('id', userId);
+        if (updateError) {
+            this.logger.error(`deductCredits error updating profile for user ${userId}: ${updateError.message}`);
+            return { success: false, error: updateError.message };
+        }
+        this.logger.log(`Successfully deducted ${amount} credits for user ${userId}. New balances: monthly=${newMonthlyBalance}, purchased=${newPurchasedBalance}, usage=${newUsageCount}`);
+        return { success: true };
+    }
+    async refundCredit(userId) {
+        const supabase = this.supabaseService.getAdminClient();
+        try {
+            const { data: profile, error: getError } = await supabase
+                .from('profiles')
+                .select('monthly_credit_balance, subscription_tier')
+                .eq('id', userId)
+                .single();
+            if (getError || !profile) {
+                this.logger.error(`refundCredit error getting profile for user ${userId}: ${getError?.message}`);
+                return { success: false, error: 'Không tìm thấy profile' };
+            }
+            const newBalance = (profile.monthly_credit_balance || 0) + 1;
+            const updatePayload = {
+                monthly_credit_balance: newBalance,
+            };
+            if (profile.subscription_tier === 'free') {
+                updatePayload.subscription_tier = 'premium';
+            }
+            const { error: updateError } = await supabase
+                .from('profiles')
+                .update(updatePayload)
+                .eq('id', userId);
+            if (updateError) {
+                this.logger.error(`refundCredit error updating profile for user ${userId}: ${updateError.message}`);
+                return { success: false, error: updateError.message };
+            }
+            this.logger.log(`Successfully refunded 1 credit for user ${userId}. New monthly balance: ${newBalance}`);
+            return { success: true };
+        }
+        catch (e) {
+            this.logger.error(`refundCredit exception for user ${userId}: ${e.message}`);
+            return { success: false, error: e.message };
+        }
     }
 };
 exports.UsageService = UsageService;

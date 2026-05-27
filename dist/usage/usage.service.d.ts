@@ -99,4 +99,18 @@ export declare class UsageService {
     }): Promise<{
         success: boolean;
     }>;
+    deductCredits(userId: string, amount: number): Promise<{
+        success: boolean;
+        error?: undefined;
+    } | {
+        success: boolean;
+        error: string;
+    }>;
+    refundCredit(userId: string): Promise<{
+        success: boolean;
+        error?: undefined;
+    } | {
+        success: boolean;
+        error: any;
+    }>;
 }

@@ -1,10 +1,53 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, Res } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, Res, Req, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import type { Response } from 'express';
 import { VideoService } from './video.service';
+import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('video')
 export class VideoController {
   constructor(private readonly videoService: VideoService) { }
+
+  /**
+   * Securely upload input video to Cloudflare R2 on behalf of the client
+   */
+  @Post('upload-r2')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(FileInterceptor('file'))
+  @HttpCode(HttpStatus.OK)
+  async uploadFileR2(
+    @Req() req: any,
+    @UploadedFile() file: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Vui lòng chọn file video.');
+    }
+    const userId = req.user.id;
+    const uploadName = `${userId}/${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.]/g, '')}`;
+    const r2Url = await this.videoService.uploadToR2(uploadName, file.buffer, file.mimetype);
+    return { success: true, url: r2Url };
+  }
+
+  /**
+   * Upscale video (requires auth & credits)
+   */
+  @Post('upscale')
+  @UseGuards(SupabaseAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async upscaleVideo(@Req() req: any, @Body() body: { video_url: string, file_name?: string }) {
+    return this.videoService.upscaleVideo(req.user.id, body.video_url, body.file_name);
+  }
+
+
+  /**
+   * Cancel an ongoing upscale video process (requires auth)
+   */
+  @Post('cancel')
+  @UseGuards(SupabaseAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async cancelUpscale(@Req() req: any, @Body() body: { id: string }) {
+    return this.videoService.cancelUpscale(req.user.id, body.id);
+  }
 
   /**
    * Download video TikTok server-side.
@@ -55,5 +98,57 @@ export class VideoController {
       console.error('Proxy error:', error);
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Proxy error');
     }
+  }
+
+  @Get('download-file')
+  async downloadFile(
+    @Query('url') url: string,
+    @Query('filename') filename: string,
+    @Res() res: Response,
+  ) {
+    if (!url) {
+      return res.status(HttpStatus.BAD_REQUEST).send('URL is required');
+    }
+    const safeFilename = filename || 'video.mp4';
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        return res.status(response.status).send(response.statusText);
+      }
+
+      res.set({
+        'Content-Disposition': `attachment; filename="${encodeURIComponent(safeFilename)}"`,
+        'Content-Type': response.headers.get('content-type') || 'application/octet-stream',
+        'Content-Length': response.headers.get('content-length'),
+        'Access-Control-Allow-Origin': '*',
+      });
+
+      if (response.body) {
+        // @ts-ignore
+        for await (const chunk of response.body) {
+          res.write(chunk);
+        }
+        res.end();
+      } else {
+        res.end();
+      }
+    } catch (error) {
+      console.error('Download proxy error:', error);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Download proxy error');
+    }
+  }
+
+  /**
+   * Webhook endpoint called by Modal when the background upscale job completes.
+   */
+  @Post('webhook')
+  @HttpCode(HttpStatus.OK)
+  async handleModalWebhook(@Body() payload: any) {
+    // Process the result asynchronously so we return HTTP 200 instantly to Modal!
+    this.videoService.handleUpscaleWebhook(payload).catch((err) => {
+      console.error('[Webhook] Error processing webhook payload:', err.message);
+    });
+    return { success: true };
   }
 }
