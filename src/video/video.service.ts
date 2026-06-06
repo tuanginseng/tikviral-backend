@@ -491,6 +491,15 @@ export class VideoService {
         skip_resize: skipResize,
         mode,
         outscale,
+        // GPU sẽ upload trực tiếp lên R2 và gửi URL qua webhook (không dùng base64)
+        r2_config: {
+          account_id: this.configService.get<string>('R2_ACCOUNT_ID'),
+          access_key_id: this.configService.get<string>('R2_ACCESS_KEY_ID'),
+          secret_access_key: this.configService.get<string>('R2_SECRET_ACCESS_KEY'),
+          bucket_name: this.configService.get<string>('R2_BUCKET_NAME') || 'tikviral',
+          public_url_base: this.configService.get<string>('R2_PUBLIC_URL') || '',
+          output_key: `${userId}/${jobId}.mp4`,
+        },
         ...(webhookUrl ? {
           webhook_url: webhookUrl,
           metadata: { userId, dbRecordId, originalFileName }
@@ -779,9 +788,66 @@ export class VideoService {
         .update({ video_title: `${originalFileName || 'upscaled_video.mp4'}##${jobId}##${audioR2Url || ''}##[4/4] Đang ghép nhạc & tối ưu chất lượng cuối...##90` })
         .eq('id', dbRecordId);
 
-      // 2. Decode GPU output
-      let finalVideoBuffer = Buffer.from(payload.video_base64, 'base64');
+      // 2. Decode GPU output (hỗ trợ cả video_url lẫn video_base64 để tương thích)
+      let finalVideoBuffer: Buffer;
       const fileName = `${userId}/${jobId}.mp4`;
+
+      if (payload.video_url) {
+        // GPU đã upload lên R2, file này có thể đã ở đúng vị trí rồi
+        this.logger.log(`[Webhook] Nhận video_url từ GPU: ${payload.video_url}`);
+        
+        // Kiểm tra xem GPU đã upload đúng đường dẫn mị dũ chưa
+        const expectedKey = `${userId}/${jobId}.mp4`;
+        const publicBase = (this.configService.get<string>('R2_PUBLIC_URL') || '').replace(/\/$/, '');
+        const expectedUrl = publicBase ? `${publicBase}/${expectedKey}` : '';
+        
+        if (expectedUrl && payload.video_url === expectedUrl) {
+          // Tốt nhất: GPU đã upload đúng chỗ, chỉ cần merge audio nếu có
+          if (audioR2Url) {
+            this.logger.log(`[Webhook] Video đã trên R2 đúng vị trí, chỉ merge audio...`);
+            const videoResponse = await fetch(payload.video_url);
+            if (!videoResponse.ok) throw new Error(`Failed to download video from R2: HTTP ${videoResponse.status}`);
+            finalVideoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+          } else {
+            // Không có audio cần merge, file đã OK
+            this.logger.log(`[Webhook] Video hoàn chỉnh trên R2, không cần merge audio. Cập nhật DB trực tiếp.`);
+            const { error: dbUpdateError } = await supabase
+              .from('upscaled_videos')
+              .update({
+                video_url: payload.video_url,
+                video_title: originalFileName || 'upscaled_video.mp4',
+                duration_seconds: payload.duration_seconds || null,
+                size_mb: payload.size_mb || null,
+                status: 'completed'
+              })
+              .eq('id', dbRecordId);
+            
+            if (dbUpdateError) {
+              this.logger.error(`[Webhook] Failed to update record: ${dbUpdateError.message}`);
+            } else {
+              this.logger.log(`[Webhook] Upscale record ${dbRecordId} completed (no audio merge needed)!`);
+              const durationSeconds = payload.duration_seconds || 0;
+              const totalCreditsNeeded = Math.ceil(durationSeconds / 60);
+              const remainingCreditsToDeduct = totalCreditsNeeded - 1;
+              if (remainingCreditsToDeduct > 0) {
+                await this.usageService.deductCredits(userId, remainingCreditsToDeduct);
+              }
+            }
+            return; // Xong! Không cần upload lại
+          }
+        } else {
+          // GPU upload đến đường dẫn khác, download về để merge audio rồi upload đúng chỗ
+          const videoResponse = await fetch(payload.video_url);
+          if (!videoResponse.ok) throw new Error(`Failed to download GPU video: HTTP ${videoResponse.status}`);
+          finalVideoBuffer = Buffer.from(await videoResponse.arrayBuffer());
+        }
+      } else if (payload.video_base64) {
+        // Fallback tương thích cũ: nhận base64 (video nhỏ)
+        this.logger.log(`[Webhook] Nhận video_base64 (fallback mode)`);
+        finalVideoBuffer = Buffer.from(payload.video_base64, 'base64');
+      } else {
+        throw new Error('Missing video_url or video_base64 in webhook payload');
+      }
 
       // 3. Scale to 1080p and merge original audio back
       try {
