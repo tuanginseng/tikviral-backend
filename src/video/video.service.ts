@@ -769,8 +769,8 @@ export class VideoService {
         throw new Error(payload.message || 'Modal processing failed');
       }
 
-      if (!payload.video_base64) {
-        throw new Error('Missing video_base64 in webhook payload');
+      if (!payload.video_url && !payload.video_base64) {
+        throw new Error('Missing video_url or video_base64 in webhook payload');
       }
 
       // 1. Fetch DB record to retrieve stored audioUrl (saved as 3rd ## segment)
