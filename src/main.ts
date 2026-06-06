@@ -4,9 +4,11 @@ import { ValidationPipe } from '@nestjs/common';
 import * as express from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Tắt built-in body parser của NestJS trước, sau đó dùng custom middleware
+  // Nếu không tắt, NestJS sẽ reject request lớn TRƯỚC khi middleware bên dưới chạy
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
 
-  // Tăng giới hạn body size lên 100MB để nhận video base64
+  // Tăng giới hạn body size lên 500MB để nhận video base64 từ webhook GPU
   app.use(express.json({ limit: '500mb' }));
   app.use(express.urlencoded({ limit: '500mb', extended: true }));
 
