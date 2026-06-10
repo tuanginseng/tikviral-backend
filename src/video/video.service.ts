@@ -2,11 +2,12 @@ import { Injectable, InternalServerErrorException, BadRequestException, Logger }
 import { ConfigService } from '@nestjs/config';
 import { UsageService } from '../usage/usage.service';
 import { SupabaseService } from '../supabase/supabase.service';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import type { Response } from 'express';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ffmpeg = require('fluent-ffmpeg');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -63,8 +64,65 @@ export class VideoService {
     } catch (rapidError: any) {
       this.logger.error(`RapidAPI also failed: ${rapidError.message}`);
       throw new InternalServerErrorException(
-        'Không thể tải video. Vui lòng kiểm tra URL hoặc thử lại sau.'
+        'Không thể tải video. Vui lòng kiểm tra URL hoặc thử lại sau.',
       );
+    }
+  }
+
+  /**
+   * Nén video bằng FFmpeg server-side, sau đó upload lên R2 để Gemini fetch trực tiếp.
+   * Giải pháp cho vấn đề: video upload từ máy khi convert sang base64 + JSON rất nặng → timeout.
+   * Flow mới: upload blob → BE nén FFmpeg → lưu tạm trên R2 → trả URL → Gemini dùng URL.
+   */
+  async compressVideoBuffer(inputBuffer: Buffer, inputMimeType: string, userId: string): Promise<{ url: string; originalMb: number; compressedMb: number }> {
+    const jobId = `compress_${Date.now()}`;
+    const tmpDir = os.tmpdir();
+    const ext = inputMimeType?.includes('mp4') ? '.mp4' : inputMimeType?.includes('webm') ? '.webm' : '.mp4';
+    const tempInputPath = path.join(tmpDir, `input_${jobId}${ext}`);
+    const tempOutputPath = path.join(tmpDir, `output_${jobId}.mp4`);
+
+    const originalMb = inputBuffer.length / 1024 / 1024;
+    this.logger.log(`[Compress] Starting server-side compression for job ${jobId} (${originalMb.toFixed(2)} MB)`);
+
+    try {
+      // Ghi buffer vào file tạm
+      fs.writeFileSync(tempInputPath, inputBuffer);
+
+      // Nén bằng FFmpeg: max 480p, 15fps, 600kbps, giữ aspect ratio
+      await new Promise<void>((resolve, reject) => {
+        ffmpeg(tempInputPath)
+          .outputOptions([
+            "-vf scale='if(gt(iw,ih),min(480,iw),-2)':'if(gt(iw,ih),-2,min(480,ih))'",
+            '-r 15',
+            '-c:v libx264',
+            '-b:v 600k',
+            '-preset fast',
+            '-crf 28',
+            '-c:a aac',
+            '-b:a 96k',
+            '-movflags +faststart',
+          ])
+          .output(tempOutputPath)
+          .on('end', () => resolve())
+          .on('error', (err: Error) => reject(new Error(`FFmpeg compression failed: ${err.message}`)))
+          .run();
+      });
+
+      const outputBuffer = fs.readFileSync(tempOutputPath);
+      const compressedMb = outputBuffer.length / 1024 / 1024;
+      this.logger.log(`[Compress] Done. ${originalMb.toFixed(2)} MB → ${compressedMb.toFixed(2)} MB. Uploading to R2...`);
+
+      // Upload lên R2 — Gemini sẽ fetch URL này trực tiếp, tránh base64 trên FE
+      const r2Key = `${userId}/tmp_analysis_${jobId}.mp4`;
+      const r2Url = await this.uploadToR2(r2Key, outputBuffer, 'video/mp4');
+
+      this.logger.log(`[Compress] Uploaded to R2: ${r2Url}`);
+      return { url: r2Url, originalMb, compressedMb };
+    } finally {
+      // Xoá file tạm
+      [tempInputPath, tempOutputPath].forEach((p) => {
+        try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {}
+      });
     }
   }
 
@@ -178,6 +236,43 @@ export class VideoService {
 
   private isValidTikTokUrl(url: string): boolean {
     return /^https?:\/\/(www\.)?(tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com)/.test(url);
+  }
+
+
+  /**
+   * Download video tu mot URL ben ngoai (VD: TikTok CDN), nen bang FFmpeg,
+   * upload len R2 va tra ve URL stable de Gemini co the fetch.
+   * Dung cho flow "phan tich video TikTok qua URL" - tranh URL CDN expire.
+   */
+  async compressVideoFromUrl(
+    sourceUrl: string,
+    userId: string,
+  ): Promise<{ url: string; originalMb: number; compressedMb: number }> {
+    this.logger.log(`[CompressFromUrl] Downloading video from: ${sourceUrl}`);
+
+    // 1. Download video ve buffer
+    const fetchResponse = await fetch(sourceUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.tiktok.com/',
+      },
+    });
+    if (!fetchResponse.ok) {
+      throw new InternalServerErrorException(
+        `Khong the tai video tu URL: HTTP ${fetchResponse.status}`,
+      );
+    }
+
+    const contentType = fetchResponse.headers.get('content-type') || 'video/mp4';
+    const arrayBuffer = await fetchResponse.arrayBuffer();
+    const inputBuffer = Buffer.from(arrayBuffer);
+
+    this.logger.log(
+      `[CompressFromUrl] Downloaded ${(inputBuffer.length / 1024 / 1024).toFixed(2)} MB. Starting compression...`,
+    );
+
+    // 2. Tai su dung pipeline compress + R2 upload
+    return this.compressVideoBuffer(inputBuffer, contentType, userId);
   }
 
   async upscaleVideo(userId: string, videoUrl: string, originalFileName?: string): Promise<{ success: boolean; url?: string; message?: string; id?: string }> {
@@ -696,6 +791,56 @@ export class VideoService {
     } catch (e: any) {
       this.logger.error(`Cloudflare R2 Upload failed: ${e.message}`);
       throw new InternalServerErrorException(`Không thể tải file lên Cloudflare R2: ${e.message}`);
+    }
+  }
+
+  /**
+   * Xoa mot file tren R2 theo URL cong khai hoac R2 key.
+   * Dung de don dep video tam sau khi Gemini da phan tich xong.
+   */
+  async deleteFromR2(r2Url: string): Promise<void> {
+    const accountId = this.configService.get<string>('R2_ACCOUNT_ID');
+    const accessKeyId = this.configService.get<string>('R2_ACCESS_KEY_ID');
+    const secretAccessKey = this.configService.get<string>('R2_SECRET_ACCESS_KEY');
+    const bucketName = this.configService.get<string>('R2_BUCKET_NAME') || 'tikviral';
+    const publicUrlBase = this.configService.get<string>('R2_PUBLIC_URL') || '';
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      this.logger.warn('[R2 Delete] R2 not configured, skipping cleanup');
+      return;
+    }
+
+    // Extract key from URL: remove the public base URL prefix
+    let key = r2Url;
+    const base = publicUrlBase.replace(/\/$/, '');
+    if (base && key.startsWith(base + '/')) {
+      key = key.slice(base.length + 1);
+    } else {
+      // Fallback: remove origin (https://domain.com/key)
+      try {
+        key = new URL(r2Url).pathname.replace(/^\//, '');
+      } catch {
+        this.logger.warn(`[R2 Delete] Cannot parse URL: ${r2Url}`);
+        return;
+      }
+    }
+
+    try {
+      const s3Client = new S3Client({
+        region: 'auto',
+        endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+        credentials: { accessKeyId, secretAccessKey },
+      });
+
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+      }));
+
+      this.logger.log(`[R2 Delete] Deleted temp video: ${key}`);
+    } catch (e: any) {
+      // Log but don't throw — cleanup failure should not break the main flow
+      this.logger.warn(`[R2 Delete] Failed to delete ${key}: ${e.message}`);
     }
   }
 

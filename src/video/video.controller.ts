@@ -1,4 +1,5 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, Res, Req, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+
 import type { Response } from 'express';
 import { VideoService } from './video.service';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
@@ -26,6 +27,68 @@ export class VideoController {
     const uploadName = `${userId}/${Date.now()}_${file.originalname.replace(/[^a-zA-Z0-9.]/g, '')}`;
     const r2Url = await this.videoService.uploadToR2(uploadName, file.buffer, file.mimetype);
     return { success: true, url: r2Url };
+  }
+
+  /**
+   * Compress video server-side using FFmpeg, upload to R2, return URL.
+   * FE dùng URL này để gửi cho Gemini thay vì base64 blob.
+   */
+  @Post('compress')
+  @UseGuards(SupabaseAuthGuard)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 500 * 1024 * 1024 } }))
+  @HttpCode(HttpStatus.OK)
+  async compressVideo(
+    @Req() req: any,
+    @UploadedFile() file: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Vui lòng chọn file video.');
+    }
+    const userId = req.user?.id || 'anonymous';
+    return this.videoService.compressVideoBuffer(file.buffer, file.mimetype, userId);
+  }
+
+
+
+  /**
+   * Download video tu URL (TikTok CDN), nen bang FFmpeg, upload R2.
+   * FE dung URL nay thay cho URL CDN co the expire.
+   */
+  @Post('compress-from-url')
+  @UseGuards(SupabaseAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async compressVideoFromUrl(
+    @Req() req: any,
+    @Body() body: { videoUrl: string },
+  ) {
+    if (!body?.videoUrl) {
+      throw new BadRequestException('videoUrl la bat buoc.');
+    }
+    const userId = req.user?.id || 'anonymous';
+    return this.videoService.compressVideoFromUrl(body.videoUrl, userId);
+  }
+
+
+
+  /**
+   * Xoa video tam tren R2 sau khi Gemini phan tich xong.
+   * FE goi sau khi nhan ket qua phan tich thanh cong.
+   */
+  @Post('r2-cleanup')
+  @UseGuards(SupabaseAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async cleanupR2Video(
+    @Req() req: any,
+    @Body() body: { url: string },
+  ) {
+    if (!body?.url) {
+      throw new BadRequestException('url la bat buoc.');
+    }
+    // Fire-and-forget: khong can await, tra ve 200 ngay
+    this.videoService.deleteFromR2(body.url).catch((err) => {
+      console.warn('[R2Cleanup] Error:', err?.message);
+    });
+    return { success: true };
   }
 
   /**
@@ -95,7 +158,7 @@ export class VideoController {
         res.end();
       }
     } catch (error) {
-      console.error('Proxy error:', error);
+      // console.error('Proxy error:', error);
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Proxy error');
     }
   }
@@ -134,7 +197,7 @@ export class VideoController {
         res.end();
       }
     } catch (error) {
-      console.error('Download proxy error:', error);
+      // console.error('Download proxy error:', error);
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('Download proxy error');
     }
   }

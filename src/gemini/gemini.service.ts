@@ -4,7 +4,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import * as crypto from 'crypto';
 
 const MAX_DAILY_USAGE = 250;
-const FALLBACK_MODEL = "gemini-2.5-flash-lite-preview-09-2025";
+const FALLBACK_MODEL = "gemini-2.5-flash-lite";
 const MAX_ATTEMPTS = 2;
 
 @Injectable()
@@ -240,7 +240,7 @@ export class GeminiService {
     }
 
     const { apiKey: geminiApiKey, keyId: geminiKeyId } = apiKeyObj;
-    const modelName = model || 'gemini-2.5-flash-lite-preview-09-2025';
+    const modelName = model || 'gemini-2.5-flash-lite';
     let currentModel = modelName;
     let attempts = 0;
 
@@ -261,12 +261,17 @@ export class GeminiService {
         if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
           await this.reportRateLimit(geminiKeyId);
           throw new InternalServerErrorException('API Key đã đạt giới hạn sử dụng. Vui lòng thử lại sau ít phút.');
-        } else if (errorMessage.includes('503') || errorMessage.includes('overloaded')) {
+        } else if (
+          errorMessage.includes('503') ||
+          errorMessage.includes('overloaded') ||
+          errorMessage.includes('404') // Model không tồn tại → fallback
+        ) {
           if (attempts < MAX_ATTEMPTS - 1) {
+            this.logger.warn(`[Model] "${currentModel}" lỗi (${errorMessage.slice(0, 80)}), thử fallback: ${FALLBACK_MODEL}`);
             currentModel = FALLBACK_MODEL;
             attempts++;
           } else {
-            throw new InternalServerErrorException('Model quá tải. Vui lòng thử lại sau.');
+            throw new InternalServerErrorException(`Model không khả dụng hoặc quá tải. Vui lòng thử lại sau. (${errorMessage.slice(0, 120)})`);
           }
         } else {
           throw new InternalServerErrorException(errorMessage);
@@ -475,6 +480,41 @@ Hãy tạo một tiêu đề video TikTok theo phong cách "${titleType}", hấp
 Chỉ trả về tiêu đề duy nhất, không thêm bất kỳ văn bản nào khác.`;
   }
 
+  // Danh sách các model đã bị Google xóa hoặc không còn hỗ trợ
+  private readonly DEPRECATED_MODELS = [
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-preview-04-17',
+    'gemini-2.5-flash-preview-05-20',
+    'gemini-1.5-flash-8b-exp-0827',
+    'gemini-1.5-flash-8b-exp-0924',
+  ];
+
+  private sanitizeModel(modelFromDb: string | undefined): string {
+    if (!modelFromDb) return FALLBACK_MODEL;
+
+    // Strip prefix 'models/' nếu có (SDK tự thêm prefix, không cần truyền vào)
+    let model = modelFromDb.replace(/^models\//, '').trim();
+
+    // Map các tên model sai/không tồn tại về model hợp lệ
+    const MODEL_REMAP: Record<string, string> = {
+      'gemini-3.5-flash': 'gemini-2.5-flash',
+      'gemini-3.5-flash-lite': 'gemini-2.5-flash-lite',
+      'gemini-3.0-flash': 'gemini-2.5-flash',
+    };
+    if (MODEL_REMAP[model]) {
+      this.logger.warn(`[Model] Model "${modelFromDb}" không hợp lệ, đổi sang: ${MODEL_REMAP[model]}`);
+      model = MODEL_REMAP[model];
+    }
+
+    // Loại bỏ các model deprecated
+    if (this.DEPRECATED_MODELS.includes(model)) {
+      this.logger.warn(`[Model] Model "${model}" đã bị deprecated, dùng fallback: ${FALLBACK_MODEL}`);
+      return FALLBACK_MODEL;
+    }
+
+    return model;
+  }
+
   private async getSettingsFromDb(): Promise<{ systemPrompt: string; model: string; violationAppealPrompt: string }> {
     const admin = this.supabaseService.getAdminClient();
     const { data } = await admin.from('admin_settings').select('setting_key, setting_value').in('setting_key', ['gemini_system_prompt', 'gemini_model', 'violation_appeal_prompt']);
@@ -482,10 +522,11 @@ Chỉ trả về tiêu đề duy nhất, không thêm bất kỳ văn bản nào
     (data || []).forEach((r: any) => { map[r.setting_key] = r.setting_value; });
     return {
       systemPrompt: map['gemini_system_prompt'] || this.getDefaultSystemPrompt(),
-      model: map['gemini_model'] || FALLBACK_MODEL,
+      model: this.sanitizeModel(map['gemini_model']),
       violationAppealPrompt: map['violation_appeal_prompt'] || this.getDefaultViolationPrompt(),
     };
   }
+
 
   private getDefaultSystemPrompt(): string {
     return `Hãy phân tích video theo framework 5 phần: Big Idea & Emotion, Hook (3s đầu), Kịch bản, Visual & Text, Sound & Pacing. Trả lời theo JSON với keys: "bigIdea", "hook", "script", "visual", "sound".`;
@@ -506,7 +547,7 @@ Chỉ trả về tiêu đề duy nhất, không thêm bất kỳ văn bản nào
     }
 
     const { apiKey: geminiApiKey, keyId: geminiKeyId } = apiKeyObj;
-    const modelName = "gemini-2.5-flash-lite-preview-09-2025";
+    const modelName = "gemini-2.5-flash-lite";
     const prompt = `Viết một bài blog SEO chuyên nghiệp về chủ đề: "${topic}"
 
 Yêu cầu:
