@@ -9,6 +9,7 @@ import { GeminiModule } from './gemini/gemini.module';
 import { SettingsModule } from './settings/settings.module';
 import { VideoModule } from './video/video.module';
 import { UsageModule } from './usage/usage.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { UsageModule } from './usage/usage.module';
     SettingsModule,
     VideoModule,
     UsageModule,
+    PaymentModule,
   ],
   controllers: [AppController],
   providers: [AppService],

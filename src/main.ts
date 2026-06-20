@@ -9,7 +9,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
 
   // Tăng giới hạn body size lên 500MB để nhận video base64 từ webhook GPU
-  app.use(express.json({ limit: '500mb' }));
+  app.use(express.json({ 
+    limit: '500mb',
+    verify: (req: any, res, buf) => {
+      req.rawBody = buf.toString('utf8');
+    }
+  }));
   app.use(express.urlencoded({ limit: '500mb', extended: true }));
 
   // Enable CORS
