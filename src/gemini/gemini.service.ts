@@ -99,7 +99,39 @@ export class GeminiService {
         const { data, error } = await admin.from('gemini_api_keys').update({ is_active, last_used_at: now.toISOString() }).eq('id', key_id).select();
         if (error) throw new InternalServerErrorException(error.message);
         if (!data || data.length === 0) throw new NotFoundException('Key not found');
-        return { message: 'API Key status updated', key: data[0] };
+
+        // Tự động reset nếu không còn key nào active
+        let autoReset = false;
+        if (!is_active) {
+          const { count, error: countError } = await admin
+            .from('gemini_api_keys')
+            .select('*', { count: 'exact', head: true })
+            .eq('is_active', true)
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+          
+          if (!countError && count === 0) {
+            // Không còn key nào được bật -> Reset toàn bộ
+            const { error: resetError } = await admin
+              .from('gemini_api_keys')
+              .update({ 
+                is_active: true, 
+                rate_limited_until: null, 
+                daily_usage_count: 0, 
+                last_reset_date: today 
+              })
+              .neq('id', '00000000-0000-0000-0000-000000000000');
+              
+            if (!resetError) {
+              autoReset = true;
+            }
+          }
+        }
+
+        return { 
+          message: autoReset ? 'Tất cả API Key đã bị tắt nên hệ thống đã tự động reset và bật lại tất cả.' : 'Cập nhật trạng thái thành công', 
+          key: data[0], 
+          autoReset 
+        };
       }
       case 'get-total-usage': {
         const { data, error } = await admin.from('gemini_api_keys').select('daily_usage_count').eq('last_reset_date', today);
