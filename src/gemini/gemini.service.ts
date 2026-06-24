@@ -207,10 +207,33 @@ export class GeminiService {
       }
     }
 
+    // Nếu vẫn không có key nào (tất cả đang bị rate limit chưa tới giờ, hoặc bị tắt hết)
+    // Tự động reset lại toàn bộ keys và bật lên lại
+    if (!keyToReturn) {
+      const { data: resetKeys, error: resetError } = await admin
+        .from('gemini_api_keys')
+        .update({ 
+          is_active: true, 
+          rate_limited_until: null, 
+          last_used_at: now.toISOString(), 
+          daily_usage_count: 0, 
+          last_reset_date: today 
+        })
+        .neq('id', '00000000-0000-0000-0000-000000000000') // Bỏ qua system key nếu có
+        .select();
+
+      if (resetError) throw new InternalServerErrorException(resetError.message);
+
+      if (resetKeys && resetKeys.length > 0) {
+        keyToReturn = resetKeys[0];
+        console.log(`[GeminiService] Auto-reset ${resetKeys.length} keys because all were inactive/rate-limited.`);
+      }
+    }
+
     if (keyToReturn) {
       return { apiKey: keyToReturn.api_key, keyId: keyToReturn.id };
     } else {
-      throw new InternalServerErrorException('No available Gemini API keys');
+      throw new InternalServerErrorException('No available Gemini API keys. Database might be empty.');
     }
   }
 
