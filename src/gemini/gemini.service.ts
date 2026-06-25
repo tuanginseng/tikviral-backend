@@ -4,7 +4,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import * as crypto from 'crypto';
 
 const MAX_DAILY_USAGE = 250;
-const FALLBACK_MODEL = "gemini-2.5-flash-lite";
+const FALLBACK_MODEL = "gemini-3.1-flash-lite";
 const MAX_ATTEMPTS = 2;
 
 @Injectable()
@@ -108,29 +108,29 @@ export class GeminiService {
             .select('*', { count: 'exact', head: true })
             .eq('is_active', true)
             .neq('id', '00000000-0000-0000-0000-000000000000');
-          
+
           if (!countError && count === 0) {
             // Không còn key nào được bật -> Reset toàn bộ
             const { error: resetError } = await admin
               .from('gemini_api_keys')
-              .update({ 
-                is_active: true, 
-                rate_limited_until: null, 
-                daily_usage_count: 0, 
-                last_reset_date: today 
+              .update({
+                is_active: true,
+                rate_limited_until: null,
+                daily_usage_count: 0,
+                last_reset_date: today
               })
               .neq('id', '00000000-0000-0000-0000-000000000000');
-              
+
             if (!resetError) {
               autoReset = true;
             }
           }
         }
 
-        return { 
-          message: autoReset ? 'Tất cả API Key đã bị tắt nên hệ thống đã tự động reset và bật lại tất cả.' : 'Cập nhật trạng thái thành công', 
-          key: data[0], 
-          autoReset 
+        return {
+          message: autoReset ? 'Tất cả API Key đã bị tắt nên hệ thống đã tự động reset và bật lại tất cả.' : 'Cập nhật trạng thái thành công',
+          key: data[0],
+          autoReset
         };
       }
       case 'get-total-usage': {
@@ -244,12 +244,12 @@ export class GeminiService {
     if (!keyToReturn) {
       const { data: resetKeys, error: resetError } = await admin
         .from('gemini_api_keys')
-        .update({ 
-          is_active: true, 
-          rate_limited_until: null, 
-          last_used_at: now.toISOString(), 
-          daily_usage_count: 0, 
-          last_reset_date: today 
+        .update({
+          is_active: true,
+          rate_limited_until: null,
+          last_used_at: now.toISOString(),
+          daily_usage_count: 0,
+          last_reset_date: today
         })
         .neq('id', '00000000-0000-0000-0000-000000000000') // Bỏ qua system key nếu có
         .select();
@@ -295,44 +295,98 @@ export class GeminiService {
     }
 
     const { apiKey: geminiApiKey, keyId: geminiKeyId } = apiKeyObj;
+
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const { GoogleAIFileManager } = require('@google/generative-ai/server');
+    const fileManager = new GoogleAIFileManager(geminiApiKey);
+    let tempFilePath: string | null = null;
+    let uploadedFileName: string | null = null;
+
+    try {
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i]._uploadBuffer) {
+          tempFilePath = path.join(os.tmpdir(), `gemini-upload-${Date.now()}-${Math.floor(Math.random() * 1000)}.mp4`);
+          fs.writeFileSync(tempFilePath, parts[i]._uploadBuffer);
+          const uploadResult = await fileManager.uploadFile(tempFilePath, {
+            mimeType: parts[i].mimeType || 'video/mp4',
+            displayName: 'video'
+          });
+          uploadedFileName = uploadResult.file.name;
+
+          let file = await fileManager.getFile(uploadedFileName);
+          while (file.state === 'PROCESSING' || file.state === 'STATE_UNSPECIFIED') {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            file = await fileManager.getFile(uploadedFileName);
+          }
+          if (file.state !== 'ACTIVE') {
+            throw new Error('Xử lý video trên Google AI thất bại: ' + file.state);
+          }
+
+          parts[i] = { fileData: { fileUri: uploadResult.file.uri, mimeType: uploadResult.file.mimeType } };
+        }
+      }
+    } catch (err: any) {
+      require('fs').writeFileSync('/tmp/tikviral_error.log', 'Upload Error: ' + (err.stack || err.message));
+      if (tempFilePath && fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
+      throw new InternalServerErrorException('Lỗi upload video lên Google AI: ' + err.message);
+    }
+
     const modelName = model || 'gemini-2.5-flash-lite';
     let currentModel = modelName;
     let attempts = 0;
+    let finalResult: { result: string; modelUsed: string } | null = null;
 
-    while (attempts < MAX_ATTEMPTS) {
-      try {
-        const genAI = new GoogleGenerativeAI(geminiApiKey);
-        const geminiModel = genAI.getGenerativeModel({ model: currentModel });
-        const result = await geminiModel.generateContent(parts);
-        const responseText = result.response.text();
+    try {
+      while (attempts < MAX_ATTEMPTS) {
+        try {
+          const genAI = new GoogleGenerativeAI(geminiApiKey);
+          this.logger.log(`Đang sử dụng model Gemini: ${currentModel} (Lần thử: ${attempts + 1}/${MAX_ATTEMPTS})`);
+          const geminiModel = genAI.getGenerativeModel({ model: currentModel });
+          const result = await geminiModel.generateContent(parts);
+          const responseText = result.response.text();
 
-        if (!responseText || responseText.trim().length === 0) {
-          throw new InternalServerErrorException('AI trả về kết quả rỗng.');
-        }
-
-        return { result: responseText, modelUsed: currentModel };
-      } catch (error: any) {
-        const errorMessage = error.message || error.toString();
-        if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
-          await this.reportRateLimit(geminiKeyId);
-          throw new InternalServerErrorException('API Key đã đạt giới hạn sử dụng. Vui lòng thử lại sau ít phút.');
-        } else if (
-          errorMessage.includes('503') ||
-          errorMessage.includes('overloaded') ||
-          errorMessage.includes('404') // Model không tồn tại → fallback
-        ) {
-          if (attempts < MAX_ATTEMPTS - 1) {
-            this.logger.warn(`[Model] "${currentModel}" lỗi (${errorMessage.slice(0, 80)}), thử fallback: ${FALLBACK_MODEL}`);
-            currentModel = FALLBACK_MODEL;
-            attempts++;
-          } else {
-            throw new InternalServerErrorException(`Model không khả dụng hoặc quá tải. Vui lòng thử lại sau. (${errorMessage.slice(0, 120)})`);
+          if (!responseText || responseText.trim().length === 0) {
+            throw new InternalServerErrorException('AI trả về kết quả rỗng.');
           }
-        } else {
-          throw new InternalServerErrorException(errorMessage);
+
+          finalResult = { result: responseText, modelUsed: currentModel };
+          break;
+        } catch (error: any) {
+          const errorMessage = error.message || error.toString();
+          if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
+            await this.reportRateLimit(geminiKeyId);
+            throw new InternalServerErrorException('API Key đã đạt giới hạn sử dụng. Vui lòng thử lại sau ít phút.');
+          } else if (
+            errorMessage.includes('503') ||
+            errorMessage.includes('overloaded') ||
+            errorMessage.includes('404') // Model không tồn tại → fallback
+          ) {
+            if (attempts < MAX_ATTEMPTS - 1) {
+              this.logger.warn(`[Model] "${currentModel}" lỗi (${errorMessage}), thử fallback: ${FALLBACK_MODEL}`);
+              currentModel = FALLBACK_MODEL;
+              attempts++;
+              continue;
+            } else {
+              throw new InternalServerErrorException(`Model không khả dụng hoặc quá tải. Vui lòng thử lại sau. (${errorMessage})`);
+            }
+          } else {
+            require('fs').writeFileSync('/tmp/tikviral_full_error.log', 'Full error: ' + error.stack);
+            throw new InternalServerErrorException(errorMessage);
+          }
         }
       }
+    } finally {
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try { fs.unlinkSync(tempFilePath); } catch (e) { }
+      }
+      if (uploadedFileName) {
+        try { await fileManager.deleteFile(uploadedFileName); } catch (e) { }
+      }
     }
+
+    if (finalResult) return finalResult;
     throw new InternalServerErrorException('Thất bại sau nhiều lần thử.');
   }
 
@@ -364,109 +418,135 @@ export class GeminiService {
     textPromptKey?: string; // key để lấy system prompt từ DB
     userText?: string;
   }): Promise<{ result: string }> {
-    const settings = await this.getSettingsFromDb();
-    let parts: any[];
+    try {
+      const settings = await this.getSettingsFromDb();
+      let parts: any[];
 
-    switch (dto.task) {
-      case 'analyze-video': {
-        if (!dto.videoData && !dto.videoUrl) throw new BadRequestException('videoData or videoUrl required');
+      switch (dto.task) {
+        case 'analyze-video': {
+          if (!dto.videoData && !dto.videoUrl) throw new BadRequestException('videoData or videoUrl required');
 
-        // Security check: Uploaded video (videoData) requires Monthly 90 package
-        if (dto.videoData && !dto.videoUrl) {
-          if (!dto.userId) {
-            throw new BadRequestException('Chức năng tải video lên yêu cầu đăng nhập và gói 90 lượt.');
+          // Security check: Uploaded video (videoData) requires Monthly 90 package
+          if (dto.videoData && !dto.videoUrl) {
+            if (!dto.userId) {
+              throw new BadRequestException('Chức năng tải video lên yêu cầu đăng nhập và gói 90 lượt.');
+            }
+
+            const admin = this.supabaseService.getAdminClient();
+            const { data: usage, error: usageError } = await admin.rpc('check_usage_only', {
+              p_user_id: dto.userId
+            });
+
+            if (usageError || !usage || usage.monthly_credits <= 0) {
+              throw new BadRequestException('Chức năng tải video lên chỉ dành cho người dùng đăng ký gói 90 lượt.');
+            }
           }
 
-          const admin = this.supabaseService.getAdminClient();
-          const { data: usage, error: usageError } = await admin.rpc('check_usage_only', {
-            p_user_id: dto.userId
-          });
-
-          if (usageError || !usage || usage.monthly_credits <= 0) {
-            throw new BadRequestException('Chức năng tải video lên chỉ dành cho người dùng đăng ký gói 90 lượt.');
+          let videoPart;
+          if (dto.videoUrl) {
+            let response;
+            try {
+              response = await fetch(dto.videoUrl, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                  'Referer': 'https://www.tiktok.com/',
+                }
+              });
+              if (!response.ok) throw new BadRequestException('Cannot fetch video from videoUrl: ' + response.status);
+            } catch (e: any) {
+              require('fs').writeFileSync('/tmp/tikviral_error.log', 'Fetch Error: ' + (e.stack || e.message));
+              throw e;
+            }
+            const buffer = await response.arrayBuffer();
+            const mimeType = response.headers.get('content-type') || 'video/mp4';
+            videoPart = { _uploadBuffer: Buffer.from(buffer), mimeType };
+          } else {
+            if (!dto.mimeType || !dto.videoData) throw new BadRequestException('mimeType and videoData required');
+            const buffer = Buffer.from(dto.videoData!.replace(/^data:.*?;base64,/, ''), 'base64');
+            videoPart = { _uploadBuffer: buffer, mimeType: dto.mimeType };
           }
-        }
 
-        let inlineData;
-        if (dto.videoUrl) {
-          const response = await fetch(dto.videoUrl);
-          if (!response.ok) throw new BadRequestException('Cannot fetch video from videoUrl');
-          const buffer = await response.arrayBuffer();
-          const base64 = Buffer.from(buffer).toString('base64');
-          const mimeType = response.headers.get('content-type') || 'video/mp4';
-          inlineData = { data: base64, mimeType };
-        } else {
-          if (!dto.mimeType) throw new BadRequestException('mimeType required when videoData is provided');
-          inlineData = { data: dto.videoData, mimeType: dto.mimeType };
+          const m = dto.metrics;
+          const stats = `- Lượt xem: ${m?.play_count?.toLocaleString() || 'N/A'}\n- Lượt thích: ${m?.digg_count?.toLocaleString() || 'N/A'}\n- Bình luận: ${m?.comment_count?.toLocaleString() || 'N/A'}\n- Chia sẻ: ${m?.share_count?.toLocaleString() || 'N/A'}`;
+          let prompt = stats + '\n\n' + settings.systemPrompt;
+          if (m?.play_count !== undefined && m.play_count < 50000 && !dto.isViral) {
+            prompt += `\n\n**LƯU Ý:** Video chưa viral (${stats}). Hãy phân tích tại sao và đưa ra gợi ý cải thiện.`;
+          } else if (dto.isViral === 'not-viral') {
+            prompt += `\n\n**LƯU Ý:** Video được chỉ định là CHƯA VIRAL. Hãy phân tích tại sao và gợi ý cải thiện.`;
+          } else if (dto.isViral === 'viral') {
+            prompt += `\n\n**LƯU Ý:** Video được chỉ định là ĐÃ VIRAL. Phân tích yếu tố giúp viral.`;
+          }
+          parts = [videoPart, { text: prompt }];
+          break;
         }
-
-        const m = dto.metrics;
-        const stats = `- Lượt xem: ${m?.play_count?.toLocaleString() || 'N/A'}\n- Lượt thích: ${m?.digg_count?.toLocaleString() || 'N/A'}\n- Bình luận: ${m?.comment_count?.toLocaleString() || 'N/A'}\n- Chia sẻ: ${m?.share_count?.toLocaleString() || 'N/A'}`;
-        let prompt = stats + '\n\n' + settings.systemPrompt;
-        if (m?.play_count !== undefined && m.play_count < 50000 && !dto.isViral) {
-          prompt += `\n\n**LƯU Ý:** Video chưa viral (${stats}). Hãy phân tích tại sao và đưa ra gợi ý cải thiện.`;
-        } else if (dto.isViral === 'not-viral') {
-          prompt += `\n\n**LƯU Ý:** Video được chỉ định là CHƯA VIRAL. Hãy phân tích tại sao và gợi ý cải thiện.`;
-        } else if (dto.isViral === 'viral') {
-          prompt += `\n\n**LƯU Ý:** Video được chỉ định là ĐÃ VIRAL. Phân tích yếu tố giúp viral.`;
+        case 'analyze-violation': {
+          if (!dto.imageData || !dto.imageMimeType) throw new BadRequestException('imageData and imageMimeType required');
+          parts = [
+            { inlineData: { data: dto.imageData, mimeType: dto.imageMimeType } },
+            { text: settings.violationAppealPrompt },
+            { text: dto.userMessage || '' },
+          ];
+          break;
         }
-        parts = [{ inlineData }, { text: prompt }];
-        break;
-      }
-      case 'analyze-violation': {
-        if (!dto.imageData || !dto.imageMimeType) throw new BadRequestException('imageData and imageMimeType required');
-        parts = [
-          { inlineData: { data: dto.imageData, mimeType: dto.imageMimeType } },
-          { text: settings.violationAppealPrompt },
-          { text: dto.userMessage || '' },
-        ];
-        break;
-      }
-      case 'extract-script': {
-        if (!dto.videoData && !dto.videoUrl) throw new BadRequestException('videoData or videoUrl required');
+        case 'extract-script': {
+          if (!dto.videoData && !dto.videoUrl) throw new BadRequestException('videoData or videoUrl required');
 
-        let inlineData;
-        if (dto.videoUrl) {
-          const response = await fetch(dto.videoUrl);
-          if (!response.ok) throw new BadRequestException('Cannot fetch video from videoUrl');
-          const buffer = await response.arrayBuffer();
-          const base64 = Buffer.from(buffer).toString('base64');
-          const mimeType = response.headers.get('content-type') || 'video/mp4';
-          inlineData = { data: base64, mimeType };
-        } else {
-          if (!dto.mimeType) throw new BadRequestException('mimeType required when videoData is provided');
-          inlineData = { data: dto.videoData, mimeType: dto.mimeType };
+          let videoPart;
+          if (dto.videoUrl) {
+            let response;
+            try {
+              response = await fetch(dto.videoUrl, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                  'Referer': 'https://www.tiktok.com/',
+                }
+              });
+              if (!response.ok) throw new BadRequestException('Cannot fetch video from videoUrl: ' + response.status);
+            } catch (e: any) {
+              require('fs').writeFileSync('/tmp/tikviral_error.log', 'Fetch Error 2: ' + (e.stack || e.message));
+              throw e;
+            }
+            const buffer = await response.arrayBuffer();
+            const mimeType = response.headers.get('content-type') || 'video/mp4';
+            videoPart = { _uploadBuffer: Buffer.from(buffer), mimeType };
+          } else {
+            if (!dto.mimeType || !dto.videoData) throw new BadRequestException('mimeType and videoData required');
+            const buffer = Buffer.from(dto.videoData!.replace(/^data:.*?;base64,/, ''), 'base64');
+            videoPart = { _uploadBuffer: buffer, mimeType: dto.mimeType };
+          }
+
+          const extractPrompt = `Trích xuất tất cả lời thoại, văn bản, và nội dung âm thanh từ video này. Bao gồm:\n\n**LỜI THOẠI/VOICE-OVER:**\n[Tất cả lời nói]\n\n**TEXT TRÊN MÀN HÌNH:**\n[Văn bản xuất hiện]\n\n**NỘI DUNG CHÍNH:**\n[Mô tả chi tiết]\n\n**ÂM THANH/NHẠC:**\n[Mô tả âm thanh]`;
+          parts = [videoPart, { text: extractPrompt }];
+          break;
         }
+        case 'create-script': {
+          if (!dto.analysisResult) throw new BadRequestException('analysisResult required');
+          // Hook + script prompt đơn giản — chi tiết hơn có thể lưu vào DB sau
+          const scriptPrompt = this.buildScriptPrompt(dto.analysisResult, dto.transcript || null, dto.hookType || null);
+          parts = [{ text: scriptPrompt }];
+          break;
+        }
+        case 'generate-title': {
+          if (!dto.scriptContent || !dto.titleType) throw new BadRequestException('scriptContent and titleType required');
+          const titlePrompt = this.buildTitlePrompt(dto.scriptContent, dto.titleType);
+          parts = [{ text: titlePrompt }];
+          break;
+        }
+        case 'generate-text': {
+          if (!dto.userText) throw new BadRequestException('userText required');
+          const sysPrompt = dto.textPromptKey ? (settings as any)[dto.textPromptKey] || '' : '';
+          parts = sysPrompt ? [{ text: sysPrompt }, { text: dto.userText }] : [{ text: dto.userText }];
+          break;
+        }
+        default:
+          throw new BadRequestException('Unknown task: ' + dto.task);
+      }
 
-        const extractPrompt = `Trích xuất tất cả lời thoại, văn bản, và nội dung âm thanh từ video này. Bao gồm:\n\n**LỜI THOẠI/VOICE-OVER:**\n[Tất cả lời nói]\n\n**TEXT TRÊN MÀN HÌNH:**\n[Văn bản xuất hiện]\n\n**NỘI DUNG CHÍNH:**\n[Mô tả chi tiết]\n\n**ÂM THANH/NHẠC:**\n[Mô tả âm thanh]`;
-        parts = [{ inlineData }, { text: extractPrompt }];
-        break;
-      }
-      case 'create-script': {
-        if (!dto.analysisResult) throw new BadRequestException('analysisResult required');
-        // Hook + script prompt đơn giản — chi tiết hơn có thể lưu vào DB sau
-        const scriptPrompt = this.buildScriptPrompt(dto.analysisResult, dto.transcript || null, dto.hookType || null);
-        parts = [{ text: scriptPrompt }];
-        break;
-      }
-      case 'generate-title': {
-        if (!dto.scriptContent || !dto.titleType) throw new BadRequestException('scriptContent and titleType required');
-        const titlePrompt = this.buildTitlePrompt(dto.scriptContent, dto.titleType);
-        parts = [{ text: titlePrompt }];
-        break;
-      }
-      case 'generate-text': {
-        if (!dto.userText) throw new BadRequestException('userText required');
-        const sysPrompt = dto.textPromptKey ? (settings as any)[dto.textPromptKey] || '' : '';
-        parts = sysPrompt ? [{ text: sysPrompt }, { text: dto.userText }] : [{ text: dto.userText }];
-        break;
-      }
-      default:
-        throw new BadRequestException(`Unknown task: ${dto.task}`);
+      return await this.generateContent(parts, settings.model);
+    } catch (e: any) {
+      require('fs').writeFileSync('/tmp/tikviral_fatal.log', 'Fatal Error: ' + (e.stack || e.message));
+      throw e;
     }
-
-    const { result } = await this.generateContent(parts, settings.model);
-    return { result };
   }
 
   private buildScriptPrompt(
