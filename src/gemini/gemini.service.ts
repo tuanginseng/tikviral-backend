@@ -294,7 +294,7 @@ export class GeminiService {
       throw new InternalServerErrorException('Không thể lấy API key Gemini từ hệ thống.');
     }
 
-    const { apiKey: geminiApiKey, keyId: geminiKeyId } = apiKeyObj;
+    let { apiKey: geminiApiKey, keyId: geminiKeyId } = apiKeyObj;
 
     const fs = require('fs');
     const os = require('os');
@@ -357,7 +357,21 @@ export class GeminiService {
           const errorMessage = error.message || error.toString();
           if (errorMessage.includes('RESOURCE_EXHAUSTED') || errorMessage.includes('429')) {
             await this.reportRateLimit(geminiKeyId);
-            throw new InternalServerErrorException('API Key đã đạt giới hạn sử dụng. Vui lòng thử lại sau ít phút.');
+            if (attempts < MAX_ATTEMPTS - 1) {
+              this.logger.warn(`API Key hết hạn mức, hệ thống đang tự động lấy key mới và thử fallback: ${FALLBACK_MODEL}`);
+              try {
+                const newKeyObj = await this.getActiveKeyInternal();
+                geminiApiKey = newKeyObj.apiKey;
+                geminiKeyId = newKeyObj.keyId;
+              } catch (e) {
+                throw new InternalServerErrorException('Tất cả API Key đều đã hết lượt sử dụng. Vui lòng thử lại sau.');
+              }
+              currentModel = FALLBACK_MODEL;
+              attempts++;
+              continue;
+            } else {
+              throw new InternalServerErrorException('API Key đã đạt giới hạn sử dụng. Vui lòng thử lại sau ít phút.');
+            }
           } else if (
             errorMessage.includes('503') ||
             errorMessage.includes('overloaded') ||
