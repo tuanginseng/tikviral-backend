@@ -1,7 +1,10 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
+import { InvoiceService } from '../invoice/invoice.service';
+import { TelegramService } from '../telegram/telegram.service';
 import * as crypto from 'crypto';
+
 
 export interface BankWebhookPayload {
   gateway: string;
@@ -25,7 +28,10 @@ export class PaymentService {
   constructor(
     private readonly configService: ConfigService,
     private readonly supabaseService: SupabaseService,
-  ) {}
+    private readonly invoiceService: InvoiceService,
+    private readonly telegramService: TelegramService,
+  ) { }
+
 
   async processWebhook(rawBody: string | undefined, signature: string | undefined, payload: BankWebhookPayload) {
     const webhookSecret = this.configService.get<string>('WEBHOOK_SECRET');
@@ -49,17 +55,15 @@ export class PaymentService {
       }
     }
 
-    this.logger.log('Received webhook payload: ' + JSON.stringify(payload));
-
     const referenceMatch = payload.content.match(/VT\d{3,10}/) || payload.code.match(/VT\d{3,10}/);
-    
+
     if (!referenceMatch) {
-      this.logger.error('No valid reference code found in webhook');
+      const msg = `Nội dung CK: ${payload.content}\nSố tiền: ${payload.transferAmount.toLocaleString('vi-VN')}đ`;
+      this.telegramService.sendAlert('LỖI WEBHOOK: Không tìm thấy mã GD (VT...)', msg, '❌');
       throw new HttpException('Invalid reference code format', HttpStatus.BAD_REQUEST);
     }
 
     const referenceCode = referenceMatch[0];
-    this.logger.log(`Extracted reference code: ${referenceCode}`);
 
     const supabase = this.supabaseService.getAdminClient();
 
@@ -76,17 +80,20 @@ export class PaymentService {
     }
 
     if (!transaction) {
-      this.logger.log(`No pending transaction found for reference code: ${referenceCode}`);
+      const msg = `Mã tham chiếu: ${referenceCode}\nSố tiền: ${payload.transferAmount.toLocaleString('vi-VN')}đ`;
+      this.telegramService.sendAlert('LỖI WEBHOOK: Mã GD không tồn tại hoặc đã xử lý', msg, '❌');
       throw new HttpException('Transaction not found or already processed', HttpStatus.NOT_FOUND);
     }
 
     if (new Date(transaction.expires_at) < new Date()) {
-      this.logger.log('Transaction has expired');
+      const msg = `Mã tham chiếu: ${referenceCode}\nSố tiền: ${payload.transferAmount.toLocaleString('vi-VN')}đ`;
+      this.telegramService.sendAlert('LỖI WEBHOOK: Giao dịch đã hết hạn', msg, '❌');
       throw new HttpException('Transaction expired', HttpStatus.BAD_REQUEST);
     }
 
     if (payload.transferAmount !== transaction.amount) {
-      this.logger.error(`Amount mismatch: expected ${transaction.amount}, got ${payload.transferAmount}`);
+      const msg = `Mã tham chiếu: ${referenceCode}\nYêu cầu: ${transaction.amount.toLocaleString('vi-VN')}đ\nThực nhận: ${payload.transferAmount.toLocaleString('vi-VN')}đ`;
+      this.telegramService.sendAlert('LỖI WEBHOOK: Sai số tiền chuyển khoản', msg, '❌');
       throw new HttpException('Amount mismatch', HttpStatus.BAD_REQUEST);
     }
 
@@ -98,7 +105,7 @@ export class PaymentService {
 
     let creditsToAdd = 0;
     let updateData: any = {};
-    
+
     switch (transaction.plan_tier) {
       case 'per_use_1':
         creditsToAdd = 1;
@@ -200,10 +207,54 @@ export class PaymentService {
       }
     }
 
-    this.logger.log(`Successfully processed payment for user: ${transaction.user_id}`);
+    let userEmail: string | undefined;
+    try {
+      const { data: userData } = await supabase.auth.admin.getUserById(transaction.user_id);
+      userEmail = userData?.user?.email;
+    } catch (e) {
+      this.logger.warn(`[PaymentService] Không lấy được email user: ${e.message}`);
+    }
 
-    return { 
-      success: true, 
+    // Fire-and-forget: xuất hóa đơn + gửi Telegram sau khi thanh toán thành công
+    // Không block response webhook nếu xuất hóa đơn lỗi
+    setImmediate(() => {
+      this.invoiceService
+        .createInvoice({
+          id: transaction.id,
+          user_id: transaction.user_id,
+          amount: transaction.amount,
+          plan_tier: transaction.plan_tier,
+          reference_code: payload.code || referenceCode,
+        })
+        .then((invoice) => {
+          if (invoice.status === 'success') {
+            return this.telegramService.sendInvoiceAlert({
+              invoiceNo: invoice.invoiceNo,
+              invoiceId: invoice.invoiceId,
+              planTier: invoice.planTier,
+              amount: invoice.amount,
+              referenceCode: payload.code || referenceCode,
+              userEmail: userEmail || transaction.user_id,
+              pdfBase64: invoice.pdfBase64,
+              pdfUrl: invoice.pdfUrl,
+            });
+          } else {
+            return this.telegramService.sendInvoiceErrorAlert({
+              planTier: invoice.planTier,
+              amount: invoice.amount,
+              referenceCode: payload.code || referenceCode,
+              errorMessage: invoice.errorMessage || 'Lỗi không xác định',
+              userEmail: userEmail,
+            });
+          }
+        })
+        .catch((err) => {
+          this.logger.error(`[PaymentService] Lỗi fire-and-forget invoice: ${err.message}`);
+        });
+    });
+
+    return {
+      success: true,
       message: 'Payment processed successfully',
       plan_tier: transaction.plan_tier,
       credits_added: creditsToAdd

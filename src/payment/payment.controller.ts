@@ -6,7 +6,7 @@ import { PaymentService } from './payment.service';
 export class PaymentController {
   private readonly logger = new Logger(PaymentController.name);
 
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(private readonly paymentService: PaymentService) { }
 
   @Post('webhook')
   async handleWebhook(
@@ -18,7 +18,6 @@ export class PaymentController {
       const result = await this.paymentService.processWebhook(req.rawBody, signature, req.body);
       return res.status(HttpStatus.OK).json(result);
     } catch (error) {
-      this.logger.error(`Webhook error: ${error.message}`);
       return res.status(error.status || HttpStatus.INTERNAL_SERVER_ERROR).json({ error: error.message });
     }
   }

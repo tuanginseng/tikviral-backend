@@ -10,12 +10,17 @@ import { SettingsModule } from './settings/settings.module';
 import { VideoModule } from './video/video.module';
 import { UsageModule } from './usage/usage.module';
 import { PaymentModule } from './payment/payment.module';
+import { TelegramModule } from './telegram/telegram.module';
+import { InvoiceModule } from './invoice/invoice.module';
+
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true, // makes ConfigService available throughout the app
     }),
+    TelegramModule,
+    InvoiceModule,
     SupabaseModule,
     AuthModule,
     AffiliateModule,

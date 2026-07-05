@@ -1,7 +1,9 @@
 import { Injectable, InternalServerErrorException, BadRequestException, ConflictException, NotFoundException, Logger } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { SupabaseService } from '../supabase/supabase.service';
+import { TelegramService } from '../telegram/telegram.service';
 import * as crypto from 'crypto';
+
 
 const MAX_DAILY_USAGE = 250;
 const FALLBACK_MODEL = "gemini-3.1-flash-lite";
@@ -11,7 +13,11 @@ const MAX_ATTEMPTS = 2;
 export class GeminiService {
   private readonly logger = new Logger(GeminiService.name);
 
-  constructor(private readonly supabaseService: SupabaseService) { }
+  constructor(
+    private readonly supabaseService: SupabaseService,
+    private readonly telegramService: TelegramService,
+  ) { }
+
 
   async proxyRequest(dto: any) {
     const { action, apiKeyToTest } = dto;
@@ -209,8 +215,15 @@ export class GeminiService {
       if (updatedKey.is_active) {
         keyToReturn = updatedKey;
       } else {
+        // Key vừa bị tắt do hết quota ngày — gửi thông báo Telegram
+        this.telegramService.sendAlert(
+          'Gemini API Key bị vô hiệu hóa',
+          `Key ID: ${activeKey.id.slice(0, 8)}...\nLý do: Đạt giới hạn ${MAX_DAILY_USAGE} lượt/ngày.\nHệ thống sẽ tự động chuyển sang key khác.`,
+          '🔴',
+        ).catch(() => {}); // Fire-and-forget, không block luồng chính
         throw new BadRequestException('Key hit daily limit, please retry to get another key.');
       }
+
     }
 
     if (!keyToReturn) {
@@ -276,7 +289,15 @@ export class GeminiService {
     if (nextResetTimeUtc.getTime() <= nowUtc.getTime()) nextResetTimeUtc.setUTCDate(nextResetTimeUtc.getUTCDate() + 1);
 
     await admin.from('gemini_api_keys').update({ is_active: false, rate_limited_until: nextResetTimeUtc.toISOString() }).eq('id', keyId);
+
+    // Gửi thông báo Telegram khi key bị rate-limited
+    this.telegramService.sendAlert(
+      'Gemini API Key bị Rate Limited',
+      `Key ID: ${keyId.slice(0, 8)}...\nLý do: Google trả về lỗi 429 (quá giới hạn tốc độ).\nKey sẽ tự động kích hoạt lại lúc ${nextResetTimeUtc.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}.`,
+      '⚠️',
+    ).catch(() => {}); // Fire-and-forget
   }
+
 
   /**
    * Gọi Gemini AI hoàn toàn server-side - API key không bao giờ ra ngoài.
