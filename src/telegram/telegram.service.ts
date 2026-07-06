@@ -83,7 +83,7 @@ export class TelegramService {
     const amountFormatted = params.amount.toLocaleString('vi-VN') + ' VND';
     const planLabel: Record<string, string> = {
       per_use_1: 'Gói 1 lượt',
-      per_use_10: 'Gói 10 lượt',
+      per_use_10: 'Gói 5 lượt',
       monthly_90: 'Gói Tháng 90 lượt (Pro)',
     };
     const caption = [

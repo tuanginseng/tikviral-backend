@@ -114,9 +114,9 @@ export class PaymentService {
         };
         break;
       case 'per_use_10':
-        creditsToAdd = 10;
+        creditsToAdd = 5;
         updateData = {
-          credit_balance: (currentProfile?.credit_balance || 0) + 10
+          credit_balance: (currentProfile?.credit_balance || 0) + 5
         };
         break;
       case 'monthly_90':

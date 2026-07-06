@@ -25,7 +25,7 @@ export interface CreatedInvoice {
 // Mapping plan_tier → thông tin hóa đơn (lấy từ CheckoutSheet.tsx)
 // Đơn vị tính: Gói dịch vụ | Người bán: CÔNG TY TNHH TIKVIRAL - MST 0111537569
 const PLAN_INVOICE_MAP: Record<string, { itemName: string; unitPrice: number }> = {
-  per_use_10: { itemName: 'Gói 10 lượt phân tích Tikviral', unitPrice: 99000 },
+  per_use_10: { itemName: 'Gói 5 lượt phân tích Tikviral', unitPrice: 49000 },
   monthly_90: { itemName: 'Gói 90 lượt phân tích Tikviral', unitPrice: 199000 },
 };
 
