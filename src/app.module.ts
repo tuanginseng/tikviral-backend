@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { SupabaseModule } from './supabase/supabase.module';
@@ -12,6 +13,7 @@ import { UsageModule } from './usage/usage.module';
 import { PaymentModule } from './payment/payment.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { InvoiceModule } from './invoice/invoice.module';
+import { ReportModule } from './report/report.module';
 
 
 @Module({
@@ -19,6 +21,7 @@ import { InvoiceModule } from './invoice/invoice.module';
     ConfigModule.forRoot({
       isGlobal: true, // makes ConfigService available throughout the app
     }),
+    ScheduleModule.forRoot(),
     TelegramModule,
     InvoiceModule,
     SupabaseModule,
@@ -29,6 +32,7 @@ import { InvoiceModule } from './invoice/invoice.module';
     VideoModule,
     UsageModule,
     PaymentModule,
+    ReportModule,
   ],
   controllers: [AppController],
   providers: [AppService],
