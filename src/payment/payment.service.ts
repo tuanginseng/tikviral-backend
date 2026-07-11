@@ -47,8 +47,7 @@ export class PaymentService {
 
       let expectedSig: string;
       if (sepayTimestamp) {
-        const payloadStr = JSON.stringify(payload);
-        expectedSig = 'sha256=' + crypto.createHmac('sha256', webhookSecret).update(sepayTimestamp + '.' + payloadStr).digest('hex');
+        expectedSig = 'sha256=' + crypto.createHmac('sha256', webhookSecret).update(sepayTimestamp + '.' + rawBody).digest('hex');
       } else {
         const hmac = crypto.createHmac('sha256', webhookSecret);
         hmac.update(rawBody);
