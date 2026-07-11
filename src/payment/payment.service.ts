@@ -33,7 +33,7 @@ export class PaymentService {
   ) { }
 
 
-  async processWebhook(rawBody: string | undefined, signature: string | undefined, payload: BankWebhookPayload) {
+  async processWebhook(rawBody: string | undefined, signature: string | undefined, payload: BankWebhookPayload, sepayTimestamp?: string) {
     const webhookSecret = this.configService.get<string>('WEBHOOK_SECRET');
 
     if (webhookSecret) {
@@ -45,12 +45,19 @@ export class PaymentService {
         throw new HttpException('Missing raw body', HttpStatus.BAD_REQUEST);
       }
 
-      const hmac = crypto.createHmac('sha256', webhookSecret);
-      hmac.update(rawBody);
-      const expectedSig = hmac.digest('hex');
+      let expectedSig: string;
+      if (sepayTimestamp) {
+        const payloadStr = JSON.stringify(payload);
+        expectedSig = 'sha256=' + crypto.createHmac('sha256', webhookSecret).update(sepayTimestamp + '.' + payloadStr).digest('hex');
+      } else {
+        const hmac = crypto.createHmac('sha256', webhookSecret);
+        hmac.update(rawBody);
+        expectedSig = hmac.digest('hex');
+      }
 
       if (expectedSig !== signature) {
         this.logger.error(`Invalid webhook signature. Expected: ${expectedSig}, Got: ${signature}`);
+
         throw new HttpException('Invalid signature', HttpStatus.UNAUTHORIZED);
       }
     }

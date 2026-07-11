@@ -112,7 +112,7 @@ export class InvoiceService {
         transactionUuid: transaction.reference_code,
       },
       buyerInfo: {
-        buyerName: 'Khách lẻ không lấy hóa đơn',
+        buyerName: 'Bán cho người tiêu dùng',
         buyerLegalName: null,
         buyerTaxCode: null,
         buyerAddressLine: '',
@@ -198,7 +198,7 @@ export class InvoiceService {
         // Lấy PDF ngay sau khi tạo hóa đơn thành công
         if (result.invoiceNo) {
           result.pdfBase64 = await this.getInvoicePdfBase64(result.invoiceNo);
-          
+
           if (result.pdfBase64) {
             const pdfBuffer = Buffer.from(result.pdfBase64, 'base64');
             const admin = this.supabaseService.getAdminClient();
@@ -316,7 +316,7 @@ export class InvoiceService {
         transactionUuid,
       },
       buyerInfo: {
-        buyerName: 'Khách lẻ không lấy hóa đơn',
+        buyerName: 'Bán cho người tiêu dùng',
         buyerLegalName: null,
         buyerTaxCode: null,
         buyerAddressLine: '',

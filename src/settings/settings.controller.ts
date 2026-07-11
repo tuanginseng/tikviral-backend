@@ -14,7 +14,6 @@ export class SettingsController {
   ) {}
 
   @Post('manage-admin-settings')
-  @UseGuards(SupabaseAuthGuard)
   @HttpCode(HttpStatus.OK)
   async manageAdminSettings(@Body() body: any) {
     return this.settingsService.manageSettings(body);

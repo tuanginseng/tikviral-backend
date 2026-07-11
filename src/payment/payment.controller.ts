@@ -12,10 +12,13 @@ export class PaymentController {
   async handleWebhook(
     @Req() req: Request & { rawBody?: string },
     @Res() res: Response,
-    @Headers('x-webhook-signature') signature: string,
+    @Headers('x-webhook-signature') webhookSignature?: string,
+    @Headers('x-sepay-signature') sepaySignature?: string,
+    @Headers('x-sepay-timestamp') sepayTimestamp?: string,
   ) {
     try {
-      const result = await this.paymentService.processWebhook(req.rawBody, signature, req.body);
+      const signature = sepaySignature || webhookSignature;
+      const result = await this.paymentService.processWebhook(req.rawBody, signature, req.body, sepayTimestamp);
       return res.status(HttpStatus.OK).json(result);
     } catch (error) {
       return res.status(error.status || HttpStatus.INTERNAL_SERVER_ERROR).json({ error: error.message });

@@ -38,12 +38,22 @@ export class SettingsService {
     const admin = this.supabaseService.getAdminClient();
     const { action, keys, settings, admin_token } = dto;
 
+    if (action === 'check_bypass') {
+      const { code } = dto;
+      if (!code) return { valid: false };
+      const { data, error } = await admin.from('admin_settings').select('setting_value').eq('setting_key', 'maintenance_bypass_code').maybeSingle();
+      if (!error && data && data.setting_value === code) {
+        return { valid: true };
+      }
+      return { valid: false };
+    }
+
     if (action === 'read') {
       if (!keys || !Array.isArray(keys) || keys.length === 0) {
         throw new BadRequestException('keys array required');
       }
 
-      const sensitiveKeys = ['gemini_api_key', 'kalodata_cookie'];
+      const sensitiveKeys = ['gemini_api_key', 'kalodata_cookie', 'maintenance_bypass_code'];
       const hasSensitive = keys.some((k: string) => sensitiveKeys.includes(k));
 
       if (hasSensitive && !this.verifyAdminToken(admin_token)) {
