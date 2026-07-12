@@ -100,38 +100,38 @@ export class ReportService {
     endOfYesterday: string;
     dateLabel: string;
   } {
-    // Lấy ngày hôm nay theo Vietnam time
-    const nowVN = new Date(
-      new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }),
-    );
-
-    // Hôm qua
-    const yesterdayVN = new Date(nowVN);
-    yesterdayVN.setDate(yesterdayVN.getDate() - 1);
-
-    // Lấy offset Vietnam (+7h = 420 phút)
-    const vnOffsetMs = 7 * 60 * 60 * 1000;
-
-    // Start: hôm qua 00:00:00 VN → UTC
-    const startVN = new Date(yesterdayVN);
-    startVN.setHours(0, 0, 0, 0);
-    const startUTC = new Date(startVN.getTime() - vnOffsetMs);
-
-    // End: hôm qua 23:59:59.999 VN → UTC (= hôm nay 00:00:00 VN)
-    const endVN = new Date(yesterdayVN);
-    endVN.setHours(23, 59, 59, 999);
-    const endUTC = new Date(endVN.getTime() - vnOffsetMs);
-
-    // Label để hiển thị
-    const dateLabel = yesterdayVN.toLocaleDateString('vi-VN', {
+    const now = new Date();
+    
+    // Lấy YYYY-MM-DD của ngày hôm nay theo giờ VN
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    
+    const todayStr = formatter.format(now);
+    const [year, month, day] = todayStr.split('-').map(Number);
+    
+    // Tính mốc 00:00:00 của ngày hôm nay (VN) quy ra mili-giây UTC
+    // Date.UTC(year, month - 1, day) là 0h UTC, trừ đi 7h sẽ ra 0h VN
+    const startOfTodayVN_In_UTC = Date.UTC(year, month - 1, day) - 7 * 60 * 60 * 1000;
+    
+    // Hôm qua sẽ lùi lại 24h
+    const startOfYesterdayUTC = new Date(startOfTodayVN_In_UTC - 24 * 60 * 60 * 1000);
+    const endOfYesterdayUTC = new Date(startOfTodayVN_In_UTC - 1);
+    
+    // Format label ngày báo cáo theo giờ VN
+    const dateLabel = new Intl.DateTimeFormat('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
-    });
+    }).format(startOfYesterdayUTC);
 
     return {
-      startOfYesterday: startUTC.toISOString(),
-      endOfYesterday: endUTC.toISOString(),
+      startOfYesterday: startOfYesterdayUTC.toISOString(),
+      endOfYesterday: endOfYesterdayUTC.toISOString(),
       dateLabel,
     };
   }
