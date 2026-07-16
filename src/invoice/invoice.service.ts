@@ -186,9 +186,16 @@ export class InvoiceService {
       const responseData = await response.json() as any;
 
       if (!response.ok || responseData.errorCode) {
+        const responseHeaders: Record<string, string> = {};
+        response.headers.forEach((val, key) => { responseHeaders[key] = val; });
+        this.logger.error(`[InvoiceService] Lỗi phát hành hóa đơn Viettel. Status: ${response.status}, Headers: ${JSON.stringify(responseHeaders)}, Data: ${JSON.stringify(responseData)}`);
+
         const code = responseData.errorCode ? `[${responseData.errorCode}] ` : `[HTTP ${response.status}] `;
         const detail = responseData.description || responseData.message || JSON.stringify(responseData);
-        const errMsg = `${code}${detail}`;
+        const importantHeaders = ['x-request-id', 'server', 'date', 'cf-ray'];
+        const filteredHeaders: Record<string, string> = {};
+        importantHeaders.forEach(k => { if (responseHeaders[k]) filteredHeaders[k] = responseHeaders[k]; });
+        const errMsg = `${code}${detail} | Headers: ${JSON.stringify(filteredHeaders)}`;
         result.errorMessage = errMsg;
       } else {
         result.status = 'success';
@@ -374,6 +381,10 @@ export class InvoiceService {
       const draftData = await draftResponse.json() as any;
 
       if (!draftResponse.ok || (draftData.errorCode && draftData.errorCode !== 200)) {
+        const responseHeaders: Record<string, string> = {};
+        draftResponse.headers.forEach((val, key) => { responseHeaders[key] = val; });
+        this.logger.error(`[InvoiceService] Lỗi tạo nháp hóa đơn Viettel. Status: ${draftResponse.status}, Headers: ${JSON.stringify(responseHeaders)}, Data: ${JSON.stringify(draftData)}`);
+
         const errMsg = draftData.description || draftData.message || JSON.stringify(draftData);
         return { success: false, error: errMsg };
       }
