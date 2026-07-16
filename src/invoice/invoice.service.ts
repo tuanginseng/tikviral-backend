@@ -385,7 +385,11 @@ export class InvoiceService {
         draftResponse.headers.forEach((val, key) => { responseHeaders[key] = val; });
         this.logger.error(`[InvoiceService] Lỗi tạo nháp hóa đơn Viettel. Status: ${draftResponse.status}, Headers: ${JSON.stringify(responseHeaders)}, Data: ${JSON.stringify(draftData)}`);
 
-        const errMsg = draftData.description || draftData.message || JSON.stringify(draftData);
+        const importantHeaders = ['x-request-id', 'server', 'date', 'cf-ray'];
+        const filteredHeaders: Record<string, string> = {};
+        importantHeaders.forEach(k => { if (responseHeaders[k]) filteredHeaders[k] = responseHeaders[k]; });
+        const errMsgBase = draftData.description || draftData.message || JSON.stringify(draftData);
+        const errMsg = `${errMsgBase} | Headers: ${JSON.stringify(filteredHeaders)}`;
         return { success: false, error: errMsg };
       }
 
