@@ -40,6 +40,17 @@ export class UsageController {
     }
   }
 
+  /** POST /usage/update-theme — Cập nhật theme user */
+  @Post('update-theme')
+  @HttpCode(HttpStatus.OK)
+  async updateTheme(@Req() req: any, @Body() body: any) {
+    try {
+      return await this.usageService.updateTheme(req.user.id, body.theme);
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
   /** POST /usage/reset-subscription — Reset subscription hết hạn */
   @Post('reset-subscription')
   @HttpCode(HttpStatus.OK)

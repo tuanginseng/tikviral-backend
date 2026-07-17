@@ -48,7 +48,7 @@ export class UsageService {
     const supabase = this.supabaseService.getAdminClient();
     const { data, error } = await supabase
       .from('profiles')
-      .select('subscription_tier, subscription_end_date, monthly_usage_count, credit_balance, monthly_credit_balance, monthly_credit_expires_at')
+      .select('subscription_tier, subscription_end_date, monthly_usage_count, credit_balance, monthly_credit_balance, monthly_credit_expires_at, theme')
       .eq('id', userId)
       .single();
 
@@ -58,6 +58,24 @@ export class UsageService {
     }
 
     return data;
+  }
+
+  /**
+   * Update user theme preference
+   */
+  async updateTheme(userId: string, theme: string) {
+    const supabase = this.supabaseService.getAdminClient();
+    const { error } = await supabase
+      .from('profiles')
+      .update({ theme })
+      .eq('id', userId);
+
+    if (error) {
+      this.logger.error(`updateTheme error for user ${userId}: ${error.message}`);
+      throw new Error(error.message);
+    }
+
+    return { success: true };
   }
 
   /**
