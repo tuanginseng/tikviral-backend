@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException, BadRequestException, Logger }
 import { ConfigService } from '@nestjs/config';
 import { UsageService } from '../usage/usage.service';
 import { SupabaseService } from '../supabase/supabase.service';
+import { GeminiService } from '../gemini/gemini.service';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import * as https from 'https';
 import * as fs from 'fs';
@@ -39,6 +40,7 @@ export class VideoService {
     private readonly configService: ConfigService,
     private readonly usageService: UsageService,
     private readonly supabaseService: SupabaseService,
+    private readonly geminiService: GeminiService,
   ) {
     // Point fluent-ffmpeg to the bundled FFmpeg binary
     ffmpeg.setFfmpegPath(ffmpegInstaller.path);
@@ -120,7 +122,7 @@ export class VideoService {
     } finally {
       // Xoá file tạm
       [tempInputPath, tempOutputPath].forEach((p) => {
-        try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {}
+        try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { }
       });
     }
   }
@@ -166,13 +168,13 @@ export class VideoService {
 
     const metrics: VideoMetrics | null = (videoData.title || videoData.play_count)
       ? {
-          play_count: videoData.play_count || 0,
-          digg_count: videoData.digg_count || 0,
-          comment_count: videoData.comment_count || 0,
-          share_count: videoData.share_count || 0,
-          title: videoData.title || 'TikTok Video',
-          cover: videoData.cover,
-        }
+        play_count: videoData.play_count || 0,
+        digg_count: videoData.digg_count || 0,
+        comment_count: videoData.comment_count || 0,
+        share_count: videoData.share_count || 0,
+        title: videoData.title || 'TikTok Video',
+        cover: videoData.cover,
+      }
       : null;
 
     return { metrics, source: 'tikwm', videoUrl, videoBase64, mimeType };
@@ -221,13 +223,13 @@ export class VideoService {
 
     const metrics: VideoMetrics | null = (videoData.title || videoData.play_count)
       ? {
-          play_count: videoData.play_count || 0,
-          digg_count: videoData.digg_count || 0,
-          comment_count: videoData.comment_count || 0,
-          share_count: videoData.share_count || 0,
-          title: videoData.title || 'TikTok Video',
-          cover: videoData.cover || videoData.origin_cover,
-        }
+        play_count: videoData.play_count || 0,
+        digg_count: videoData.digg_count || 0,
+        comment_count: videoData.comment_count || 0,
+        share_count: videoData.share_count || 0,
+        title: videoData.title || 'TikTok Video',
+        cover: videoData.cover || videoData.origin_cover,
+      }
       : null;
 
     return { metrics, source: 'rapidapi', videoUrl, videoBase64, mimeType };
@@ -293,7 +295,7 @@ export class VideoService {
     // 1. Check if user has an active monthly subscription
     const profile = await this.usageService.getProfile(userId);
     const isSubscribed = profile && (profile.monthly_credit_balance > 0);
-                         
+
     if (!isSubscribed) {
       throw new BadRequestException('Tính năng làm nét video (Upscale) chỉ dành cho tài khoản đã mua gói tháng. Vui lòng nâng cấp tài khoản của bạn để sử dụng.');
     }
@@ -342,15 +344,15 @@ export class VideoService {
       this.processUpscaleInBackground(userId, dbRecordId!, videoUrl, jobId, modalUrl, originalFileName);
 
       // 5. Return success instantly to client
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: 'Đã nhận yêu cầu làm nét. Tiến trình đang chạy ngầm.',
         id: dbRecordId || undefined
       };
 
     } catch (e: any) {
       this.logger.error(`Upscale initiation failed: ${e.message}`);
-      
+
       // Update record to 'failed' in DB if it was created
       if (dbRecordId) {
         try {
@@ -358,9 +360,9 @@ export class VideoService {
             .from('upscaled_videos')
             .update({ status: 'failed' })
             .eq('id', dbRecordId);
-        } catch (_) {}
+        } catch (_) { }
       }
-      
+
       throw new InternalServerErrorException('Không thể khởi tạo quá trình làm nét: ' + e.message);
     }
   }
@@ -485,7 +487,7 @@ export class VideoService {
     // Using '-c:v copy' enables instant muxing (< 0.1s) and 100% quality retention.
     await new Promise<void>((resolve, reject) => {
       let command = ffmpeg(tempVideoPath);
-      
+
       const options = [
         '-c:v copy',
         '-movflags +faststart',
@@ -513,7 +515,7 @@ export class VideoService {
 
     // Cleanup temp files
     [tempVideoPath, tempAudioPath, tempOutputPath].forEach((p) => {
-      try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {}
+      try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { }
     });
 
     return finalBuffer;
@@ -547,7 +549,7 @@ export class VideoService {
           await this.transcodeForUpscale(videoUrl, jobId);
 
         // Clean up temp files
-        tempPaths.forEach((p) => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {} });
+        tempPaths.forEach((p) => { try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) { } });
 
         // Upload scaled-down video to R2
         const transcodedFileName = `${userId}/transcoded_${jobId}.mp4`;
@@ -715,12 +717,12 @@ export class VideoService {
         this.logger.error(`[Background Job] Failed to update upscale record ${dbRecordId} to completed: ${dbUpdateError.message}`);
       } else {
         this.logger.log(`[Background Job] Upscale record ${dbRecordId} successfully completed!`);
-        
+
         // 3.5. Trừ thêm credit còn lại dựa trên thời gian xử lý video thực tế (mỗi phút trừ 1 credit, làm tròn lên, trừ đi 1 credit đã thu cọc lúc đầu)
         const durationSeconds = data.duration_seconds || 0;
         const totalCreditsNeeded = Math.ceil(durationSeconds / 60);
         const remainingCreditsToDeduct = totalCreditsNeeded - 1;
-        
+
         if (remainingCreditsToDeduct > 0) {
           this.logger.log(`[Background Job] Video processed in ${durationSeconds}s. Charging ${totalCreditsNeeded} credits in total. Deducting remaining ${remainingCreditsToDeduct} credits for user ${userId}.`);
           await this.usageService.deductCredits(userId, remainingCreditsToDeduct);
@@ -731,12 +733,12 @@ export class VideoService {
 
     } catch (e: any) {
       this.logger.error(`[Background Job] Upscale execution failed for record ${dbRecordId}: ${e.message}`);
-      
+
       // Update record to 'failed' in DB
       try {
         await supabase
           .from('upscaled_videos')
-          .update({ 
+          .update({
             status: 'failed',
             video_title: originalFileName || 'upscaled_video.mp4'
           })
@@ -763,7 +765,7 @@ export class VideoService {
 
     try {
       this.logger.log(`Uploading ${cleanFileName} (${fileBuffer.length} bytes) to Cloudflare R2 using S3 Client`);
-      
+
       const s3Client = new S3Client({
         region: 'auto',
         endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
@@ -939,12 +941,12 @@ export class VideoService {
       if (payload.video_url) {
         // GPU đã upload lên R2, file này có thể đã ở đúng vị trí rồi
         this.logger.log(`[Webhook] Nhận video_url từ GPU: ${payload.video_url}`);
-        
+
         // Kiểm tra xem GPU đã upload đúng đường dẫn mị dũ chưa
         const expectedKey = `${userId}/${jobId}.mp4`;
         const publicBase = (this.configService.get<string>('R2_PUBLIC_URL') || '').replace(/\/$/, '');
         const expectedUrl = publicBase ? `${publicBase}/${expectedKey}` : '';
-        
+
         if (expectedUrl && payload.video_url === expectedUrl) {
           // Tốt nhất: GPU đã upload đúng chỗ, chỉ cần merge audio nếu có
           if (audioR2Url) {
@@ -965,7 +967,7 @@ export class VideoService {
                 status: 'completed'
               })
               .eq('id', dbRecordId);
-            
+
             if (dbUpdateError) {
               this.logger.error(`[Webhook] Failed to update record: ${dbUpdateError.message}`);
             } else {
@@ -1018,12 +1020,12 @@ export class VideoService {
         this.logger.error(`[Webhook] Failed to update upscale record ${dbRecordId} to completed: ${dbUpdateError.message}`);
       } else {
         this.logger.log(`[Webhook] Upscale record ${dbRecordId} successfully completed via Webhook!`);
-        
+
         // 3. Deduct credit deposit remaining
         const durationSeconds = payload.duration_seconds || 0;
         const totalCreditsNeeded = Math.ceil(durationSeconds / 60);
         const remainingCreditsToDeduct = totalCreditsNeeded - 1;
-        
+
         if (remainingCreditsToDeduct > 0) {
           this.logger.log(`[Webhook] Deducting remaining ${remainingCreditsToDeduct} credits for user ${userId}.`);
           await this.usageService.deductCredits(userId, remainingCreditsToDeduct);
@@ -1031,12 +1033,12 @@ export class VideoService {
       }
     } catch (e: any) {
       this.logger.error(`[Webhook] Processing failed for record ${dbRecordId}: ${e.message}`);
-      
+
       // Update record to 'failed' in DB
       try {
         await supabase
           .from('upscaled_videos')
-          .update({ 
+          .update({
             status: 'failed',
             video_title: originalFileName || 'upscaled_video.mp4'
           })
@@ -1081,7 +1083,7 @@ export class VideoService {
       // 3. Update status in database immediately to 'cancelled'
       await supabase
         .from('upscaled_videos')
-        .update({ 
+        .update({
           status: 'cancelled',
           video_title: cleanTitle
         })
@@ -1110,5 +1112,120 @@ export class VideoService {
       this.logger.error(`[Cancel Job] Failed to cancel job for record ${dbRecordId}: ${e.message}`);
       throw new InternalServerErrorException(e.message);
     }
+  }
+
+  /**
+   * Fetch thông tin sản phẩm TikTok từ booking-api.tiktoday.vn
+   * rồi dùng Gemini để tạo 10 hook affiliate chuyên nghiệp.
+   */
+  async generateProductHooks(productUrl: string, userId: string): Promise<{ result: string }> {
+    if (!productUrl) {
+      throw new BadRequestException('productUrl là bắt buộc.');
+    }
+
+    // Kiểm tra số dư credit
+    const profile = await this.usageService.getProfile(userId);
+    const totalCredits = (profile.monthly_credit_balance || 0) + (profile.credit_balance || 0);
+    if (totalCredits < 1) {
+      throw new BadRequestException('Bạn không đủ credit để tạo hook. Vui lòng nạp thêm credit.');
+    }
+
+    // Trừ 1 credit
+    const deductRes = await this.usageService.deductCredits(userId, 1);
+    if (!deductRes.success) {
+      throw new BadRequestException('Lỗi khi trừ credit: ' + deductRes.error);
+    }
+
+    // 1. Fetch product info từ TikToday API
+    let productInfo: any;
+    try {
+      const response = await fetch('https://booking-api.tiktoday.vn/api/v1/products/info', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'content-type': 'application/json',
+          'x-org-id': 'f999d0a0-9be2-4f36-80a8-2ed76cb0945c',
+          'origin': 'https://booking.tiktoday.vn',
+          'referer': 'https://booking.tiktoday.vn/',
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+          'cookie': '_ga=GA1.1.1120479057.1783067130; token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDY2OTUsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwicGhvbmUiOiIiLCJyb2xlIjoidXNlciIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlX2lkIjoiRThQcWpnWktsR05Qd1QwMXc5M2ZuNGsySU8zMyIsImlzcyI6IlRpa1RvZGF5IiwiZXhwIjoxNzg1NjU5MjA3LCJpYXQiOjE3ODMwNjcyMDd9.VvgY_QYwkUQJVFUNcocb-W87gcARW7bThE8OOV5wHp8; _ga_9GE0BWBYXG=GS2.1.s1784512943$o5$g1$t1784513004$j59$l0$h0',
+        },
+        body: JSON.stringify({ url: productUrl }),
+      });
+
+      if (!response.ok) {
+        throw new BadRequestException(`Không thể lấy thông tin sản phẩm (HTTP ${response.status}). Vui lòng kiểm tra lại link sản phẩm.`);
+      }
+
+      const data = await response.json();
+      productInfo = data;
+    } catch (e: any) {
+      if (e instanceof BadRequestException) throw e;
+      throw new InternalServerErrorException('Lỗi khi lấy thông tin sản phẩm: ' + e.message);
+    }
+
+    // 2. Build product info text
+    const productInfoText = JSON.stringify(productInfo, null, 2);
+
+    // 3. Build prompt
+    const hookPrompt = `Bạn là chuyên gia viết kịch bản hook TikTok cho video affiliate (aff), được huấn luyện theo phương pháp luận của "Tikviral" — người có nhiều clip aff doanh số hơn 1 tỷ đồng. Nhiệm vụ của bạn: dựa vào thông tin sản phẩm dưới đây, tạo ra 20 HOOK (câu mở đầu video) khác nhau để người dùng quay video TikTok bán hàng.
+
+# THÔNG TIN SẢN PHẨM
+${productInfoText}
+
+# NGUYÊN TẮC BẮT BUỘC KHI TẠO HOOK
+
+## 1. Công thức gốc: "1 câu + 1 target + 1 insight"
+Mỗi hook phải nêu được TRONG 1 CÂU: một tập khách hàng cụ thể (target) + nỗi đau/nhu cầu của họ (insight), gắn liền với sản phẩm. Lý do: trên TikTok Shop, video ăn theo quảng cáo/AI phân phối chứ không ăn may viral — hook càng chỉ rõ "ai nên xem" thì AI càng phân phối đúng người, tỷ lệ ra đơn càng cao.
+
+## 2. Chấm điểm độ "niche" (độ cụ thể) — chỉ chọn hook đạt 7-10 điểm
+Target + insight càng cụ thể càng ăn điểm. Thang tham khảo:
+- 1 điểm: chung chung ("mọi người mua đi")
+- 3 điểm: có giới tính ("mấy ông nam mua đi")
+- 5 điểm: có thêm hành vi/đặc điểm ("mấy ông nam hay bị X mua đi")
+- 7 điểm: có thêm tần suất/mức độ cụ thể
+- 10 điểm: kết hợp đủ 6 yếu tố — Giới tính, Độ tuổi, Khu vực, Công việc, Hành vi, Nhu cầu — trong một câu tự nhiên, không gượng ép
+
+Với mỗi hook bạn tạo, tự chấm điểm độ niche (thang 1-10) và chỉ giữ lại nếu đạt từ 7 trở lên. Nếu thông tin sản phẩm không đủ dữ kiện để lên tới 10 điểm thì cứ tối ưu hết mức có thể trong giới hạn dữ liệu.
+
+## 3. Áp dụng khung "5 chỉ số vàng" — đặc biệt là Hook 3 giây đầu
+Hook là để vượt qua bộ lọc 3 giây đầu, phải kích thích thị giác/tò mò ngay lập tức. Với mỗi hook, ngoài câu thoại, hãy gợi ý 1 HÀNH ĐỘNG HÌNH ẢNH đi kèm (chuyển động nhanh, đạo cụ, biểu cảm...) để giữ chân người xem — không lướt qua.
+Đồng thời, nội dung hook nên gợi mở khả năng: được Like (đồng cảm/giải trí), được Comment (câu hỏi lửng/gây tranh luận), được Lưu (có giá trị dùng lại) hoặc được Share (nói trúng nỗi lòng số đông) — miễn phù hợp với sản phẩm.
+
+## 4. Đa dạng hoá theo 7 nhóm tâm lý hook
+Phân bổ 20 hook trải đều qua các nhóm sau, chọn nhóm phù hợp với đặc tính sản phẩm:
+1. Gây Tò Mò & Bí Mật — tiết lộ điều ít ai biết, tạo vòng lặp xem lại
+2. Kích Tranh Luận — đưa quan điểm trái chiều về cách dùng/lựa chọn sản phẩm
+3. Chứng Minh Kết Quả — khoe kết quả trước/sau, so sánh giá trị
+4. Giáo Dục Chuyên Môn — mẹo/kiến thức liên quan đến sản phẩm, hoặc "cách lười" để đạt kết quả
+5. Đánh Vào Nỗi Sợ — cảnh báo hậu quả nếu không dùng/không biết
+6. Kể Chuyện & Đồng Cảm — trải nghiệm cá nhân, thú nhận, câu chuyện trước-sau
+7. Lọc Đúng Khách Hàng — gọi thẳng tên tập khách ("Nếu bạn là...")
+
+Viết hook bằng tiếng Việt tự nhiên, giọng nói thật (như người thật đang nói trước camera), KHÔNG dịch máy, KHÔNG sáo rỗng, KHÔNG vi phạm chính sách quảng cáo TikTok (không cam kết y tế/hiệu quả tuyệt đối, không dùng từ cấm như "chữa khỏi", "đảm bảo 100%"...).
+
+# ĐỊNH DẠNG OUTPUT
+Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, theo cấu trúc:
+
+{
+  "product_name": "tên sản phẩm",
+  "hooks": [
+    {
+      "id": 1,
+      "category": "một trong 7 nhóm ở trên",
+      "target_audience": "mô tả tập khách hàng cụ thể",
+      "insight": "nỗi đau/nhu cầu cụ thể của tập khách này",
+      "niche_score": 8,
+      "hook_text": "câu hook hoàn chỉnh, tự nhiên, sẵn sàng đọc trước camera",
+      "visual_action": "hành động/đạo cụ hình ảnh gợi ý cho 3 giây đầu",
+      "psychological_trigger": "tên cơ chế tâm lý đang khai thác"
+    }
+  ]
+}`;
+
+    // 4. Lấy model đã cài đặt trong DB và gọi Gemini
+    const settings = await this.geminiService.getSettingsFromDb();
+    const parts = [{ text: hookPrompt }];
+    return this.geminiService.generateContent(parts, settings.model);
   }
 }

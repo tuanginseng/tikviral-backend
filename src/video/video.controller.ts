@@ -214,4 +214,23 @@ export class VideoController {
     });
     return { success: true };
   }
+
+  /**
+   * Tạo 10 hook TikTok affiliate từ link sản phẩm.
+   * Gọi booking-api.tiktoday.vn để lấy thông tin sản phẩm, sau đó dùng Gemini tạo hooks.
+   */
+  @Post('product-hooks')
+  @UseGuards(SupabaseAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async generateProductHooks(@Req() req: any, @Body() body: { url: string }) {
+    if (!body?.url) {
+      throw new BadRequestException('url là bắt buộc.');
+    }
+    const userId = req.user?.id;
+    if (!userId) {
+      throw new BadRequestException('Unauthorized');
+    }
+    return this.videoService.generateProductHooks(body.url, userId);
+  }
 }
+

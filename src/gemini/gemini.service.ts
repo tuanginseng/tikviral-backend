@@ -685,7 +685,7 @@ Chỉ trả về tiêu đề duy nhất, không thêm bất kỳ văn bản nào
     return model;
   }
 
-  private async getSettingsFromDb(): Promise<{ systemPrompt: string; model: string; violationAppealPrompt: string }> {
+  async getSettingsFromDb(): Promise<{ systemPrompt: string; model: string; violationAppealPrompt: string }> {
     const admin = this.supabaseService.getAdminClient();
     const { data } = await admin.from('admin_settings').select('setting_key, setting_value').in('setting_key', ['gemini_system_prompt', 'gemini_model', 'violation_appeal_prompt']);
     const map: Record<string, string> = {};
