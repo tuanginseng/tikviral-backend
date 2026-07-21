@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Get, Query, Res, Req, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Delete, Param, Body, HttpCode, HttpStatus, Get, Query, Res, Req, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 
 import type { Response } from 'express';
 import { VideoService } from './video.service';
@@ -238,7 +238,7 @@ export class VideoController {
    */
   @Post('tts')
   @UseGuards(SupabaseAuthGuard)
-  async generateTTS(@Req() req: any, @Body() body: { text: string; voice?: string; ref_audio_b64?: string }, @Res() res: Response) {
+  async generateTTS(@Req() req: any, @Body() body: { text: string; voice?: string; ref_audio_b64?: string; ref_audio_url?: string }, @Res() res: Response) {
     if (!body?.text) {
       throw new BadRequestException('text is required');
     }
@@ -254,7 +254,12 @@ export class VideoController {
       const response = await fetch(`${apiUrl}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: body.text, voice: body.voice || 'voice-1', ref_audio_b64: body.ref_audio_b64 })
+        body: JSON.stringify({
+          text: body.text,
+          voice: body.voice || 'voice-1',
+          ref_audio_b64: body.ref_audio_b64,
+          ref_audio_url: body.ref_audio_url
+        })
       });
 
       if (!response.ok) {
@@ -272,13 +277,64 @@ export class VideoController {
           res.write(chunk);
         }
         res.end();
-      } else {
-        res.end();
       }
     } catch (error) {
       console.error('TTS proxy error:', error);
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('TTS proxy error');
     }
+  }
+
+  /**
+   * Save a user's cloned voice (max 3 per user)
+   */
+  @Post('voices')
+  @UseGuards(SupabaseAuthGuard)
+  async saveVoice(@Req() req: any, @Body() body: { name: string; audio_url: string }) {
+    if (!body?.name?.trim()) throw new BadRequestException('name is required');
+    if (!body?.audio_url?.trim()) throw new BadRequestException('audio_url is required');
+
+    const userId = req.user.id;
+    const supabase = req['supabase'];
+    if (!supabase) throw new BadRequestException('Supabase client not available');
+
+    const { count, error: countError } = await supabase
+      .from('user_voices')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+
+    if (countError) throw new BadRequestException('Kh\u00f4ng th\u1ec3 ki\u1ec3m tra s\u1ed1 gi\u1ecdng hi\u1ec7n t\u1ea1i.');
+    if ((count || 0) >= 3) {
+      throw new BadRequestException('B\u1ea1n ch\u1ec9 c\u00f3 th\u1ec3 l\u01b0u t\u1ed1i \u0111a 3 gi\u1ecdng \u0111\u1ecdc. Vui l\u00f2ng x\u00f3a gi\u1ecdng c\u0169 tr\u01b0\u1edbc khi th\u00eam gi\u1ecdng m\u1edbi.');
+    }
+
+    const { data, error } = await supabase
+      .from('user_voices')
+      .insert({ user_id: userId, name: body.name.trim(), audio_url: body.audio_url })
+      .select()
+      .single();
+
+    if (error) throw new BadRequestException('Kh\u00f4ng th\u1ec3 l\u01b0u gi\u1ecdng v\u00e0o c\u01a1 s\u1edf d\u1eef li\u1ec7u.');
+    return data;
+  }
+
+  /**
+   * Delete a user's saved voice
+   */
+  @Delete('voices/:id')
+  @UseGuards(SupabaseAuthGuard)
+  async deleteVoice(@Req() req: any, @Param('id') id: string) {
+    const userId = req.user.id;
+    const supabase = req['supabase'];
+    if (!supabase) throw new BadRequestException('Supabase client not available');
+
+    const { error } = await supabase
+      .from('user_voices')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+
+    if (error) throw new BadRequestException('Kh\u00f4ng th\u1ec3 x\u00f3a gi\u1ecdng.');
+    return { success: true };
   }
 }
 

@@ -25,8 +25,9 @@ export class SupabaseAuthGuard implements CanActivate {
       throw new UnauthorizedException('Bạn chưa đăng nhập');
     }
 
-    // Attach user to request
+    // Attach user and supabase client to request
     request.user = user;
+    request.supabase = supabase;
     return true;
   }
 }
