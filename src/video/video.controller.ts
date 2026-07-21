@@ -232,5 +232,53 @@ export class VideoController {
     }
     return this.videoService.generateProductHooks(body.url, userId);
   }
+
+  /**
+   * TTS Proxy to Modal
+   */
+  @Post('tts')
+  @UseGuards(SupabaseAuthGuard)
+  async generateTTS(@Req() req: any, @Body() body: { text: string; voice?: string; ref_audio_b64?: string }, @Res() res: Response) {
+    if (!body?.text) {
+      throw new BadRequestException('text is required');
+    }
+    if (body.text.length > 4000) {
+      throw new BadRequestException('Text exceeds maximum length of 4000 characters');
+    }
+    const apiUrl = process.env.MODAL_TTS_URL;
+    if (!apiUrl) {
+      throw new BadRequestException('TTS API not configured');
+    }
+
+    try {
+      const response = await fetch(`${apiUrl}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: body.text, voice: body.voice || 'voice-1', ref_audio_b64: body.ref_audio_b64 })
+      });
+
+      if (!response.ok) {
+        return res.status(response.status).send('TTS API error');
+      }
+
+      res.set({
+        'Content-Type': response.headers.get('content-type') || 'audio/wav',
+        'Content-Length': response.headers.get('content-length'),
+      });
+
+      if (response.body) {
+        // @ts-ignore
+        for await (const chunk of response.body) {
+          res.write(chunk);
+        }
+        res.end();
+      } else {
+        res.end();
+      }
+    } catch (error) {
+      console.error('TTS proxy error:', error);
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).send('TTS proxy error');
+    }
+  }
 }
 
