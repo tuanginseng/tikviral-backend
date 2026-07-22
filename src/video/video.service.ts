@@ -1136,32 +1136,95 @@ export class VideoService {
       throw new BadRequestException('Lỗi khi trừ credit: ' + deductRes.error);
     }
 
-    // 1. Fetch product info từ TikToday API
-    let productInfo: any;
+    // 0. Chuẩn hóa URL sản phẩm (lấy ID và chuyển về dạng chuẩn https://www.tiktok.com/view/product/{id})
+    let finalProductUrl = productUrl;
     try {
-      const response = await fetch('https://booking-api.tiktoday.vn/api/v1/products/info', {
+      const redirectRes = await fetch(productUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      const resolvedUrl = redirectRes.url || productUrl;
+      const match = resolvedUrl.match(/\/(?:pdp|product)\/(\d+)/);
+      if (match && match[1]) {
+        finalProductUrl = `https://www.tiktok.com/view/product/${match[1]}`;
+        this.logger.log(`[Hooks] Normalized product URL: ${productUrl} -> ${finalProductUrl}`);
+      } else {
+        finalProductUrl = resolvedUrl;
+      }
+    } catch (e: any) {
+      this.logger.warn(`[Hooks] Failed to normalize product URL ${productUrl}: ${e.message}`);
+    }
+
+    // 1. Fetch product info từ SlideLabs API (ưu tiên)
+    let productInfo: any = null;
+    try {
+      const slideLabsResponse = await fetch('https://api-v1.slidelabs.net/api/creator/import-product', {
         method: 'POST',
         headers: {
-          'accept': 'application/json',
+          'accept': 'application/json, text/plain, */*',
+          'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
+          'authorization': 'Bearer eyJhbGciOiJFZERTQSIsImtpZCI6ImU3MzU0ZWI1LWM4MjEtNDA4NC05ZGY2LWFhYzVkNWU5OGRlMiJ9.eyJpYXQiOjE3ODQ3MDc5NDgsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwiZW1haWxWZXJpZmllZCI6dHJ1ZSwiY3JlYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwidXBkYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJiYW5uZWQiOmZhbHNlLCJiYW5SZWFzb24iOm51bGwsImJhbkV4cGlyZXMiOm51bGwsImlkIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwic3ViIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwiZXhwIjoxNzg0NzA4ODQ4LCJpc3MiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2giLCJhdWQiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2gifQ.kSSeb9Gnlkjfqp7NhP4kPoHFVjB8wkHnliB64rF1wlrz-aP-BTm0Y3XhR2znHJsr3cjTgqfOkhN9--GrD4wvCA',
+          'cache-control': 'no-cache',
           'content-type': 'application/json',
-          'x-org-id': 'f999d0a0-9be2-4f36-80a8-2ed76cb0945c',
-          'origin': 'https://booking.tiktoday.vn',
-          'referer': 'https://booking.tiktoday.vn/',
+          'dnt': '1',
+          'origin': 'https://www.slidelabs.net',
+          'pragma': 'no-cache',
+          'priority': 'u=1, i',
+          'referer': 'https://www.slidelabs.net/',
+          'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"macOS"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-site',
           'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-          'cookie': '_ga=GA1.1.1120479057.1783067130; token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDY2OTUsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwicGhvbmUiOiIiLCJyb2xlIjoidXNlciIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlX2lkIjoiRThQcWpnWktsR05Qd1QwMXc5M2ZuNGsySU8zMyIsImlzcyI6IlRpa1RvZGF5IiwiZXhwIjoxNzg1NjU5MjA3LCJpYXQiOjE3ODMwNjcyMDd9.VvgY_QYwkUQJVFUNcocb-W87gcARW7bThE8OOV5wHp8; _ga_9GE0BWBYXG=GS2.1.s1784512943$o5$g1$t1784513004$j59$l0$h0',
+          'x-session-id': 'b3339841-e517-40be-8425-a7867aabf351',
+          'Cookie': '__Secure-neon-auth.session_challange=72956f2f75af273863f45c1f5a5c16d942245662ae1ed0e736748835cd85ea89.yR1SUFPtt%2Fbpkyz27nZdDIcSN0swulj0QH8M2bZUSJg%3D; ph_phc_grwL1MkkuOhGrtuZ8GEa0n7ai6IzpzXjSlrPUerMS0N_posthog=%7B%22%24device_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22distinct_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22%24sesid%22%3A%5B1784708084073%2C%22019f88e1-f110-708c-8262-3d2e8215c8db%22%2C1784707936526%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwww.slidelabs.net%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D'
         },
-        body: JSON.stringify({ url: productUrl }),
+        body: JSON.stringify({ url: finalProductUrl }),
       });
 
-      if (!response.ok) {
-        throw new BadRequestException(`Không thể lấy thông tin sản phẩm (HTTP ${response.status}). Vui lòng kiểm tra lại link sản phẩm.`);
+      if (slideLabsResponse.ok) {
+        const slideLabsData = await slideLabsResponse.json();
+        if (slideLabsData && slideLabsData.productName) {
+          productInfo = slideLabsData;
+          this.logger.log(`[Hooks] Successfully fetched product info from SlideLabs for ${finalProductUrl}`);
+        }
       }
+    } catch (slideLabsError: any) {
+      this.logger.warn(`[Hooks] SlideLabs API failed: ${slideLabsError.message}. Falling back to TikToday API.`);
+    }
 
-      const data = await response.json();
-      productInfo = data;
-    } catch (e: any) {
-      if (e instanceof BadRequestException) throw e;
-      throw new InternalServerErrorException('Lỗi khi lấy thông tin sản phẩm: ' + e.message);
+    if (!productInfo) {
+      // Fallback: Fetch product info từ TikToday API
+      try {
+        const response = await fetch('https://booking-api.tiktoday.vn/api/v1/products/info', {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'content-type': 'application/json',
+            'x-org-id': 'f999d0a0-9be2-4f36-80a8-2ed76cb0945c',
+            'origin': 'https://booking.tiktoday.vn',
+            'referer': 'https://booking.tiktoday.vn/',
+            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+            'cookie': '_ga=GA1.1.1120479057.1783067130; token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NDY2OTUsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwicGhvbmUiOiIiLCJyb2xlIjoidXNlciIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsImZpcmViYXNlX2lkIjoiRThQcWpnWktsR05Qd1QwMXc5M2ZuNGsySU8zMyIsImlzcyI6IlRpa1RvZGF5IiwiZXhwIjoxNzg1NjU5MjA3LCJpYXQiOjE3ODMwNjcyMDd9.VvgY_QYwkUQJVFUNcocb-W87gcARW7bThE8OOV5wHp8; _ga_9GE0BWBYXG=GS2.1.s1784512943$o5$g1$t1784513004$j59$l0$h0',
+          },
+          body: JSON.stringify({ url: finalProductUrl }),
+        });
+
+        if (!response.ok) {
+          throw new BadRequestException(`Không thể lấy thông tin sản phẩm (HTTP ${response.status}). Vui lòng kiểm tra lại link sản phẩm.`);
+        }
+
+        const data = await response.json();
+        productInfo = data;
+      } catch (e: any) {
+        await this.usageService.refundCredit(userId);
+        if (e instanceof BadRequestException) throw e;
+        throw new InternalServerErrorException('Lỗi khi lấy thông tin sản phẩm: ' + e.message);
+      }
     }
 
     // 2. Build product info text
@@ -1224,8 +1287,13 @@ Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, the
 }`;
 
     // 4. Lấy model đã cài đặt trong DB và gọi Gemini
-    const settings = await this.geminiService.getSettingsFromDb();
-    const parts = [{ text: hookPrompt }];
-    return this.geminiService.generateContent(parts, settings.model);
+    try {
+      const settings = await this.geminiService.getSettingsFromDb();
+      const parts = [{ text: hookPrompt }];
+      return await this.geminiService.generateContent(parts, settings.model);
+    } catch (e: any) {
+      await this.usageService.refundCredit(userId);
+      throw e;
+    }
   }
 }
