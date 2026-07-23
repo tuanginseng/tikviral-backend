@@ -1123,17 +1123,10 @@ export class VideoService {
       throw new BadRequestException('productUrl là bắt buộc.');
     }
 
-    // Kiểm tra số dư credit
-    const profile = await this.usageService.getProfile(userId);
-    const totalCredits = (profile.monthly_credit_balance || 0) + (profile.credit_balance || 0);
-    if (totalCredits < 1) {
-      throw new BadRequestException('Bạn không đủ credit để tạo hook. Vui lòng nạp thêm credit.');
-    }
-
-    // Trừ 1 credit
-    const deductRes = await this.usageService.deductCredits(userId, 1);
-    if (!deductRes.success) {
-      throw new BadRequestException('Lỗi khi trừ credit: ' + deductRes.error);
+    // Kiểm tra số dư (áp dụng cho tất cả credit/free usage)
+    const usageCheck = await this.usageService.checkUsage(userId);
+    if (!usageCheck?.success) {
+      throw new BadRequestException('Bạn đã hết lượt sử dụng. Vui lòng nâng cấp gói hoặc nạp thêm credit.');
     }
 
     // 0. Chuẩn hóa URL sản phẩm (lấy ID và chuyển về dạng chuẩn https://www.tiktok.com/view/product/{id})
@@ -1291,9 +1284,16 @@ Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, the
       const settings = await this.geminiService.getSettingsFromDb();
       const parts = [{ text: hookPrompt }];
       const modelToUse = useFallbackModel ? FALLBACK_MODEL : settings.model;
-      return await this.geminiService.generateContent(parts, modelToUse);
+      const result = await this.geminiService.generateContent(parts, modelToUse);
+      
+      // Sau khi tạo hook thành công: trừ lượt dùng của user (credit hoặc lượt miễn phí)
+      await this.usageService.incrementUsage(userId).catch(err =>
+        this.logger.warn(`[Hooks] Failed to increment usage for ${userId}: ${err.message}`)
+      );
+      
+      return result;
     } catch (e: any) {
-      await this.usageService.refundCredit(userId);
+      // Lỗi xảy ra trước khi incrementUsage được gọi, nên không cần hoàn credit
       throw e;
     }
   }
