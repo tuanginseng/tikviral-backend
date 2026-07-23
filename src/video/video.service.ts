@@ -65,7 +65,7 @@ export class VideoService {
       return await this.downloadFromRapidApi(url);
     } catch (rapidError: any) {
       this.logger.error(`RapidAPI also failed: ${rapidError.message}`);
-      throw new InternalServerErrorException(
+      throw new BadRequestException(
         'Không thể tải video. Vui lòng kiểm tra URL hoặc thử lại sau.',
       );
     }
