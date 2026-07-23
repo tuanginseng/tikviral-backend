@@ -2,7 +2,7 @@ import { Injectable, InternalServerErrorException, BadRequestException, Logger }
 import { ConfigService } from '@nestjs/config';
 import { UsageService } from '../usage/usage.service';
 import { SupabaseService } from '../supabase/supabase.service';
-import { GeminiService } from '../gemini/gemini.service';
+import { GeminiService, FALLBACK_MODEL } from '../gemini/gemini.service';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import * as https from 'https';
 import * as fs from 'fs';
@@ -1118,7 +1118,7 @@ export class VideoService {
    * Fetch thông tin sản phẩm TikTok từ booking-api.tiktoday.vn
    * rồi dùng Gemini để tạo 10 hook affiliate chuyên nghiệp.
    */
-  async generateProductHooks(productUrl: string, userId: string): Promise<{ result: string }> {
+  async generateProductHooks(productUrl: string, userId: string, useFallbackModel: boolean = false): Promise<{ result: string }> {
     if (!productUrl) {
       throw new BadRequestException('productUrl là bắt buộc.');
     }
@@ -1290,7 +1290,8 @@ Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, the
     try {
       const settings = await this.geminiService.getSettingsFromDb();
       const parts = [{ text: hookPrompt }];
-      return await this.geminiService.generateContent(parts, settings.model);
+      const modelToUse = useFallbackModel ? FALLBACK_MODEL : settings.model;
+      return await this.geminiService.generateContent(parts, modelToUse);
     } catch (e: any) {
       await this.usageService.refundCredit(userId);
       throw e;

@@ -6,7 +6,7 @@ import * as crypto from 'crypto';
 
 
 const MAX_DAILY_USAGE = 250;
-const FALLBACK_MODEL = "gemini-3.1-flash-lite";
+export const FALLBACK_MODEL = "gemini-3.1-flash-lite";
 const MAX_ATTEMPTS = 2;
 
 @Injectable()

@@ -222,7 +222,7 @@ export class VideoController {
   @Post('product-hooks')
   @UseGuards(SupabaseAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async generateProductHooks(@Req() req: any, @Body() body: { url: string }) {
+  async generateProductHooks(@Req() req: any, @Body() body: { url: string, useFallbackModel?: boolean }) {
     if (!body?.url) {
       throw new BadRequestException('url là bắt buộc.');
     }
@@ -230,7 +230,7 @@ export class VideoController {
     if (!userId) {
       throw new BadRequestException('Unauthorized');
     }
-    return this.videoService.generateProductHooks(body.url, userId);
+    return this.videoService.generateProductHooks(body.url, userId, body.useFallbackModel);
   }
 
   /**
