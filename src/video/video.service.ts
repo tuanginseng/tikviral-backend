@@ -1150,48 +1150,99 @@ export class VideoService {
       this.logger.warn(`[Hooks] Failed to normalize product URL ${productUrl}: ${e.message}`);
     }
 
-    // 1. Fetch product info từ SlideLabs API (ưu tiên)
+    // 1. Thử trích xuất productId trực tiếp từ URL (không cần fetch)
     let productInfo: any = null;
-    try {
-      const slideLabsResponse = await fetch('https://api-v1.slidelabs.net/api/creator/import-product', {
-        method: 'POST',
-        headers: {
-          'accept': 'application/json, text/plain, */*',
-          'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
-          'authorization': 'Bearer eyJhbGciOiJFZERTQSIsImtpZCI6ImU3MzU0ZWI1LWM4MjEtNDA4NC05ZGY2LWFhYzVkNWU5OGRlMiJ9.eyJpYXQiOjE3ODQ3MDc5NDgsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwiZW1haWxWZXJpZmllZCI6dHJ1ZSwiY3JlYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwidXBkYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJiYW5uZWQiOmZhbHNlLCJiYW5SZWFzb24iOm51bGwsImJhbkV4cGlyZXMiOm51bGwsImlkIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwic3ViIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwiZXhwIjoxNzg0NzA4ODQ4LCJpc3MiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2giLCJhdWQiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2gifQ.kSSeb9Gnlkjfqp7NhP4kPoHFVjB8wkHnliB64rF1wlrz-aP-BTm0Y3XhR2znHJsr3cjTgqfOkhN9--GrD4wvCA',
-          'cache-control': 'no-cache',
-          'content-type': 'application/json',
-          'dnt': '1',
-          'origin': 'https://www.slidelabs.net',
-          'pragma': 'no-cache',
-          'priority': 'u=1, i',
-          'referer': 'https://www.slidelabs.net/',
-          'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"macOS"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-site',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-          'x-session-id': 'b3339841-e517-40be-8425-a7867aabf351',
-          'Cookie': '__Secure-neon-auth.session_challange=72956f2f75af273863f45c1f5a5c16d942245662ae1ed0e736748835cd85ea89.yR1SUFPtt%2Fbpkyz27nZdDIcSN0swulj0QH8M2bZUSJg%3D; ph_phc_grwL1MkkuOhGrtuZ8GEa0n7ai6IzpzXjSlrPUerMS0N_posthog=%7B%22%24device_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22distinct_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22%24sesid%22%3A%5B1784708084073%2C%22019f88e1-f110-708c-8262-3d2e8215c8db%22%2C1784707936526%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwww.slidelabs.net%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D'
-        },
-        body: JSON.stringify({ url: finalProductUrl }),
-      });
 
-      if (slideLabsResponse.ok) {
-        const slideLabsData = await slideLabsResponse.json();
-        if (slideLabsData && slideLabsData.productName) {
-          productInfo = slideLabsData;
-          this.logger.log(`[Hooks] Successfully fetched product info from SlideLabs for ${finalProductUrl}`);
+    const directIdMatch = finalProductUrl.match(/\/(?:pdp|product|view\/product)\/(\d+)/);
+    const knownProductId = directIdMatch?.[1] ?? null;
+
+    this.logger.log(`[Hooks] finalProductUrl=${finalProductUrl}, knownProductId=${knownProductId}`);
+
+    // 2. Nếu có productId → thử RapidAPI ngay (nhanh & chắc chắn)
+    if (knownProductId) {
+      try {
+        this.logger.log(`[Hooks] Trying RapidAPI first for productId: ${knownProductId}`);
+        const rapidApiResponse = await fetch(
+          `https://tiktok-shop-product-seller-data-api.p.rapidapi.com/tiktok-shop/product-detail?region=VN&productId=${knownProductId}`,
+          {
+            method: 'GET',
+            headers: {
+              'x-rapidapi-key': '643ac70e63msh8f92edc51ba2582p104d4djsn01dc91f5df2c',
+              'x-rapidapi-host': 'tiktok-shop-product-seller-data-api.p.rapidapi.com',
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (rapidApiResponse.ok) {
+          const rapidApiData = await rapidApiResponse.json();
+          if (rapidApiData?.ok && rapidApiData?.data?.[0]) {
+            const p = rapidApiData.data[0];
+            productInfo = {
+              productName: p.productTitle,
+              description: p.productDescription,
+              price: `${p.price} ${p.currency} (gốc: ${p.originalPrice} ${p.currency}, giảm ${p.discountFormat})`,
+              rating: p.rating,
+              ratingCount: p.ratingCount,
+              soldCount: p.soldCount,
+              sellerName: p.sellerName,
+              coverUrl: p.coverUrl,
+              gallery: p.gallery,
+              productUrl: p.productUrl,
+              skus: p.skus,
+              _source: 'rapidapi',
+            };
+            this.logger.log(`[Hooks] Successfully fetched from RapidAPI for productId: ${knownProductId}`);
+          }
         }
+      } catch (rapidApiError: any) {
+        this.logger.warn(`[Hooks] RapidAPI failed: ${rapidApiError.message}`);
       }
-    } catch (slideLabsError: any) {
-      this.logger.warn(`[Hooks] SlideLabs API failed: ${slideLabsError.message}. Falling back to TikToday API.`);
     }
 
+    // 3. Fallback: SlideLabs (dùng khi không có ID hoặc RapidAPI thất bại)
     if (!productInfo) {
-      // Fallback: Fetch product info từ TikToday API
+      try {
+        const slideLabsResponse = await fetch('https://api-v1.slidelabs.net/api/creator/import-product', {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json, text/plain, */*',
+            'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
+            'authorization': 'Bearer eyJhbGciOiJFZERTQSIsImtpZCI6ImU3MzU0ZWI1LWM4MjEtNDA4NC05ZGY2LWFhYzVkNWU5OGRlMiJ9.eyJpYXQiOjE3ODQ3MDc5NDgsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwiZW1haWxWZXJpZmllZCI6dHJ1ZSwiY3JlYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwidXBkYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJiYW5uZWQiOmZhbHNlLCJiYW5SZWFzb24iOm51bGwsImJhbkV4cGlyZXMiOm51bGwsImlkIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwic3ViIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwiZXhwIjoxNzg0NzA4ODQ4LCJpc3MiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2giLCJhdWQiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2gifQ.kSSeb9Gnlkjfqp7NhP4kPoHFVjB8wkHnliB64rF1wlrz-aP-BTm0Y3XhR2znHJsr3cjTgqfOkhN9--GrD4wvCA',
+            'cache-control': 'no-cache',
+            'content-type': 'application/json',
+            'dnt': '1',
+            'origin': 'https://www.slidelabs.net',
+            'pragma': 'no-cache',
+            'priority': 'u=1, i',
+            'referer': 'https://www.slidelabs.net/',
+            'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"macOS"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
+            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+            'x-session-id': 'b3339841-e517-40be-8425-a7867aabf351',
+            'Cookie': '__Secure-neon-auth.session_challange=72956f2f75af273863f45c1f5a5c16d942245662ae1ed0e736748835cd85ea89.yR1SUFPtt%2Fbpkyz27nZdDIcSN0swulj0QH8M2bZUSJg%3D; ph_phc_grwL1MkkuOhGrtuZ8GEa0n7ai6IzpzXjSlrPUerMS0N_posthog=%7B%22%24device_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22distinct_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22%24sesid%22%3A%5B1784708084073%2C%22019f88e1-f110-708c-8262-3d2e8215c8db%22%2C1784707936526%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwww.slidelabs.net%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D'
+          },
+          body: JSON.stringify({ url: finalProductUrl }),
+        });
+
+        if (slideLabsResponse.ok) {
+          const slideLabsData = await slideLabsResponse.json();
+          if (slideLabsData && slideLabsData.productName) {
+            productInfo = slideLabsData;
+            this.logger.log(`[Hooks] Successfully fetched product info from SlideLabs for ${finalProductUrl}`);
+          }
+        }
+      } catch (slideLabsError: any) {
+        this.logger.warn(`[Hooks] SlideLabs API failed: ${slideLabsError.message}. Falling back to TikToday API.`);
+      }
+    }
+
+    // 4. Fallback cuối: TikToday API
+    if (!productInfo) {
       try {
         const response = await fetch('https://booking-api.tiktoday.vn/api/v1/products/info', {
           method: 'POST',
@@ -1285,12 +1336,12 @@ Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, the
       const parts = [{ text: hookPrompt }];
       const modelToUse = useFallbackModel ? FALLBACK_MODEL : settings.model;
       const result = await this.geminiService.generateContent(parts, modelToUse);
-      
+
       // Sau khi tạo hook thành công: trừ lượt dùng của user (credit hoặc lượt miễn phí)
       await this.usageService.incrementUsage(userId).catch(err =>
         this.logger.warn(`[Hooks] Failed to increment usage for ${userId}: ${err.message}`)
       );
-      
+
       return result;
     } catch (e: any) {
       // Lỗi xảy ra trước khi incrementUsage được gọi, nên không cần hoàn credit
