@@ -1161,7 +1161,7 @@ export class VideoService {
           'sec-fetch-mode': 'cors',
           'sec-fetch-site': 'same-site',
           'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-          'x-session-id': 'b3339841-e517-40be-8425-a7867aabf351',
+          'x-session-id': '82f0b4c6-c483-4b6d-9238-0e98d1e58615',
           'Cookie': '__Secure-neon-auth.session_challange=72956f2f75af273863f45c1f5a5c16d942245662ae1ed0e736748835cd85ea89.yR1SUFPtt%2Fbpkyz27nZdDIcSN0swulj0QH8M2bZUSJg%3D; ph_phc_grwL1MkkuOhGrtuZ8GEa0n7ai6IzpzXjSlrPUerMS0N_posthog=%7B%22%24device_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22distinct_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22%24sesid%22%3A%5B1784708084073%2C%22019f88e1-f110-708c-8262-3d2e8215c8db%22%2C1784707936526%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwww.slidelabs.net%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D'
         },
         body: JSON.stringify({ url: finalProductUrl }),
