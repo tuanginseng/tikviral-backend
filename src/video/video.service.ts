@@ -1114,21 +1114,7 @@ export class VideoService {
     }
   }
 
-  /**
-   * Fetch thông tin sản phẩm TikTok từ booking-api.tiktoday.vn
-   * rồi dùng Gemini để tạo 10 hook affiliate chuyên nghiệp.
-   */
-  async generateProductHooks(productUrl: string, userId: string, useFallbackModel: boolean = false): Promise<{ result: string }> {
-    if (!productUrl) {
-      throw new BadRequestException('productUrl là bắt buộc.');
-    }
-
-    // Kiểm tra số dư (áp dụng cho tất cả credit/free usage)
-    const usageCheck = await this.usageService.checkUsage(userId);
-    if (!usageCheck?.success) {
-      throw new BadRequestException('Bạn đã hết lượt sử dụng. Vui lòng nâng cấp gói hoặc nạp thêm credit.');
-    }
-
+  private async fetchProductInfoWithFallbacks(productUrl: string, userId: string): Promise<any> {
     // 0. Chuẩn hóa URL sản phẩm (lấy ID và chuyển về dạng chuẩn https://www.tiktok.com/view/product/{id})
     let finalProductUrl = productUrl;
     try {
@@ -1150,98 +1136,100 @@ export class VideoService {
       this.logger.warn(`[Hooks] Failed to normalize product URL ${productUrl}: ${e.message}`);
     }
 
-    // 1. Thử trích xuất productId trực tiếp từ URL (không cần fetch)
+    // 1. First priority: SlideLabs
     let productInfo: any = null;
 
-    const directIdMatch = finalProductUrl.match(/\/(?:pdp|product|view\/product)\/(\d+)/);
-    const knownProductId = directIdMatch?.[1] ?? null;
+    try {
+      this.logger.log(`[Hooks] Trying SlideLabs first for: ${finalProductUrl}`);
+      const slideLabsResponse = await fetch('https://api-v1.slidelabs.net/api/creator/import-product', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json, text/plain, */*',
+          'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
+          'authorization': 'Bearer eyJhbGciOiJFZERTQSIsImtpZCI6ImU3MzU0ZWI1LWM4MjEtNDA4NC05ZGY2LWFhYzVkNWU5OGRlMiJ9.eyJpYXQiOjE3ODUzMzM3OTQsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwiZW1haWxWZXJpZmllZCI6dHJ1ZSwiY3JlYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwidXBkYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJiYW5uZWQiOmZhbHNlLCJiYW5SZWFzb24iOm51bGwsImJhbkV4cGlyZXMiOm51bGwsImlkIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwic3ViIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwiZXhwIjoxNzg1MzM0Njk0LCJpc3MiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2giLCJhdWQiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2gifQ.r1uepkMUJ8TytnPMCuQLWo-ZXgf2RQX3aX64T5iZ0tK55WNlzUR-5PGAPQvymOBtKU5vgoOsB9n9n4XLmt5aAA',
+          'cache-control': 'no-cache',
+          'content-type': 'application/json',
+          'dnt': '1',
+          'origin': 'https://www.slidelabs.net',
+          'pragma': 'no-cache',
+          'priority': 'u=1, i',
+          'referer': 'https://www.slidelabs.net/',
+          'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"macOS"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-site',
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+          'x-session-id': 'b3339841-e517-40be-8425-a7867aabf351',
+          'Cookie': '__Secure-neon-auth.session_challange=72956f2f75af273863f45c1f5a5c16d942245662ae1ed0e736748835cd85ea89.yR1SUFPtt%2Fbpkyz27nZdDIcSN0swulj0QH8M2bZUSJg%3D; ph_phc_grwL1MkkuOhGrtuZ8GEa0n7ai6IzpzXjSlrPUerMS0N_posthog=%7B%22%24device_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22distinct_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22%24sesid%22%3A%5B1784708084073%2C%22019f88e1-f110-708c-8262-3d2e8215c8db%22%2C1784707936526%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwww.slidelabs.net%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D'
+        },
+        body: JSON.stringify({ url: finalProductUrl }),
+      });
 
-    this.logger.log(`[Hooks] finalProductUrl=${finalProductUrl}, knownProductId=${knownProductId}`);
-
-    // 2. Nếu có productId → thử RapidAPI ngay (nhanh & chắc chắn)
-    if (knownProductId) {
-      try {
-        this.logger.log(`[Hooks] Trying RapidAPI first for productId: ${knownProductId}`);
-        const rapidApiResponse = await fetch(
-          `https://tiktok-shop-product-seller-data-api.p.rapidapi.com/tiktok-shop/product-detail?region=VN&productId=${knownProductId}`,
-          {
-            method: 'GET',
-            headers: {
-              'x-rapidapi-key': '643ac70e63msh8f92edc51ba2582p104d4djsn01dc91f5df2c',
-              'x-rapidapi-host': 'tiktok-shop-product-seller-data-api.p.rapidapi.com',
-              'Content-Type': 'application/json',
-            },
+      if (slideLabsResponse.ok) {
+        const slideLabsData = await slideLabsResponse.json();
+        if (slideLabsData && slideLabsData.productName) {
+          // Normalize: map images[0].url -> coverUrl for consistent downstream usage
+          if (!slideLabsData.coverUrl && Array.isArray(slideLabsData.images) && slideLabsData.images.length > 0) {
+            slideLabsData.coverUrl = slideLabsData.images[0].url;
           }
-        );
-
-        if (rapidApiResponse.ok) {
-          const rapidApiData = await rapidApiResponse.json();
-          if (rapidApiData?.ok && rapidApiData?.data?.[0]) {
-            const p = rapidApiData.data[0];
-            productInfo = {
-              productName: p.productTitle,
-              description: p.productDescription,
-              price: `${p.price} ${p.currency} (gốc: ${p.originalPrice} ${p.currency}, giảm ${p.discountFormat})`,
-              rating: p.rating,
-              ratingCount: p.ratingCount,
-              soldCount: p.soldCount,
-              sellerName: p.sellerName,
-              coverUrl: p.coverUrl,
-              gallery: p.gallery,
-              productUrl: p.productUrl,
-              skus: p.skus,
-              _source: 'rapidapi',
-            };
-            this.logger.log(`[Hooks] Successfully fetched from RapidAPI for productId: ${knownProductId}`);
-          }
+          productInfo = slideLabsData;
+          this.logger.log(`[Hooks] Successfully fetched product info from SlideLabs for ${finalProductUrl}`);
         }
-      } catch (rapidApiError: any) {
-        this.logger.warn(`[Hooks] RapidAPI failed: ${rapidApiError.message}`);
       }
+    } catch (slideLabsError: any) {
+      this.logger.warn(`[Hooks] SlideLabs API failed: ${slideLabsError.message}. Falling back to RapidAPI.`);
     }
 
-    // 3. Fallback: SlideLabs (dùng khi không có ID hoặc RapidAPI thất bại)
+    // 2. Second priority: RapidAPI
     if (!productInfo) {
-      try {
-        const slideLabsResponse = await fetch('https://api-v1.slidelabs.net/api/creator/import-product', {
-          method: 'POST',
-          headers: {
-            'accept': 'application/json, text/plain, */*',
-            'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
-            'authorization': 'Bearer eyJhbGciOiJFZERTQSIsImtpZCI6ImU3MzU0ZWI1LWM4MjEtNDA4NC05ZGY2LWFhYzVkNWU5OGRlMiJ9.eyJpYXQiOjE3ODQ3MDc5NDgsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwiZW1haWxWZXJpZmllZCI6dHJ1ZSwiY3JlYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwidXBkYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJiYW5uZWQiOmZhbHNlLCJiYW5SZWFzb24iOm51bGwsImJhbkV4cGlyZXMiOm51bGwsImlkIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwic3ViIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwiZXhwIjoxNzg0NzA4ODQ4LCJpc3MiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2giLCJhdWQiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2gifQ.kSSeb9Gnlkjfqp7NhP4kPoHFVjB8wkHnliB64rF1wlrz-aP-BTm0Y3XhR2znHJsr3cjTgqfOkhN9--GrD4wvCA',
-            'cache-control': 'no-cache',
-            'content-type': 'application/json',
-            'dnt': '1',
-            'origin': 'https://www.slidelabs.net',
-            'pragma': 'no-cache',
-            'priority': 'u=1, i',
-            'referer': 'https://www.slidelabs.net/',
-            'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
-            'sec-ch-ua-mobile': '?0',
-            'sec-ch-ua-platform': '"macOS"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-site',
-            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-            'x-session-id': 'b3339841-e517-40be-8425-a7867aabf351',
-            'Cookie': '__Secure-neon-auth.session_challange=72956f2f75af273863f45c1f5a5c16d942245662ae1ed0e736748835cd85ea89.yR1SUFPtt%2Fbpkyz27nZdDIcSN0swulj0QH8M2bZUSJg%3D; ph_phc_grwL1MkkuOhGrtuZ8GEa0n7ai6IzpzXjSlrPUerMS0N_posthog=%7B%22%24device_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22distinct_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22%24sesid%22%3A%5B1784708084073%2C%22019f88e1-f110-708c-8262-3d2e8215c8db%22%2C1784707936526%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwww.slidelabs.net%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D'
-          },
-          body: JSON.stringify({ url: finalProductUrl }),
-        });
+      const directIdMatch = finalProductUrl.match(/\/(?:pdp|product|view\/product)\/(\d+)/);
+      const knownProductId = directIdMatch?.[1] ?? null;
 
-        if (slideLabsResponse.ok) {
-          const slideLabsData = await slideLabsResponse.json();
-          if (slideLabsData && slideLabsData.productName) {
-            productInfo = slideLabsData;
-            this.logger.log(`[Hooks] Successfully fetched product info from SlideLabs for ${finalProductUrl}`);
+      if (knownProductId) {
+        try {
+          this.logger.log(`[Hooks] Trying RapidAPI for productId: ${knownProductId}`);
+          const rapidApiResponse = await fetch(
+            `https://tiktok-shop-product-seller-data-api.p.rapidapi.com/tiktok-shop/product-detail?region=VN&productId=${knownProductId}`,
+            {
+              method: 'GET',
+              headers: {
+                'x-rapidapi-key': '643ac70e63msh8f92edc51ba2582p104d4djsn01dc91f5df2c',
+                'x-rapidapi-host': 'tiktok-shop-product-seller-data-api.p.rapidapi.com',
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+
+          if (rapidApiResponse.ok) {
+            const rapidApiData = await rapidApiResponse.json();
+            if (rapidApiData?.ok && rapidApiData?.data?.[0]) {
+              const p = rapidApiData.data[0];
+              productInfo = {
+                productName: p.productTitle,
+                description: p.productDescription,
+                price: `${p.price} ${p.currency} (gốc: ${p.originalPrice} ${p.currency}, giảm ${p.discountFormat})`,
+                rating: p.rating,
+                ratingCount: p.ratingCount,
+                soldCount: p.soldCount,
+                sellerName: p.sellerName,
+                coverUrl: p.coverUrl,
+                gallery: p.gallery,
+                productUrl: p.productUrl,
+                skus: p.skus,
+                _source: 'rapidapi',
+              };
+              this.logger.log(`[Hooks] Successfully fetched from RapidAPI for productId: ${knownProductId}`);
+            }
           }
+        } catch (rapidApiError: any) {
+          this.logger.warn(`[Hooks] RapidAPI failed: ${rapidApiError.message}`);
         }
-      } catch (slideLabsError: any) {
-        this.logger.warn(`[Hooks] SlideLabs API failed: ${slideLabsError.message}. Falling back to TikToday API.`);
       }
     }
 
-    // 4. Fallback cuối: TikToday API
+    // 3. Third priority: TikToday API
     if (!productInfo) {
       try {
         const response = await fetch('https://booking-api.tiktoday.vn/api/v1/products/info', {
@@ -1265,11 +1253,30 @@ export class VideoService {
         const data = await response.json();
         productInfo = data;
       } catch (e: any) {
-        await this.usageService.refundCredit(userId);
         if (e instanceof BadRequestException) throw e;
         throw new InternalServerErrorException('Lỗi khi lấy thông tin sản phẩm: ' + e.message);
       }
     }
+
+    return productInfo;
+  }
+
+  /**
+   * Fetch thông tin sản phẩm TikTok từ booking-api.tiktoday.vn
+   * rồi dùng Gemini để tạo 10 hook affiliate chuyên nghiệp.
+   */
+  async generateProductHooks(productUrl: string, userId: string, useFallbackModel: boolean = false): Promise<{ result: string }> {
+    if (!productUrl) {
+      throw new BadRequestException('productUrl là bắt buộc.');
+    }
+
+    // Kiểm tra số dư (áp dụng cho tất cả credit/free usage)
+    const usageCheck = await this.usageService.checkUsage(userId);
+    if (!usageCheck?.success) {
+      throw new BadRequestException('Bạn đã hết lượt sử dụng. Vui lòng nâng cấp gói hoặc nạp thêm credit.');
+    }
+
+    const productInfo = await this.fetchProductInfoWithFallbacks(productUrl, userId);
 
     // 2. Build product info text
     const productInfoText = JSON.stringify(productInfo, null, 2);
@@ -1346,6 +1353,392 @@ Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, the
     } catch (e: any) {
       // Lỗi xảy ra trước khi incrementUsage được gọi, nên không cần hoàn credit
       throw e;
+    }
+  }
+
+  /**
+   * B-Roll video generation:
+   * 1. Fetch product info from RapidAPI (same as hook generator)
+   * 2. Use Gemini to generate a video prompt from product info + cover image
+   * 3. Edit product image via APIAI to create clean concept
+   * 4. Submit to apiai.vn for video generation
+   * 5. Return jobId for polling
+   */
+  async generateBRollVideo(productUrl: string, userId: string): Promise<any> {
+    if (!productUrl) throw new BadRequestException('productUrl là bắt buộc.');
+
+    const apiaiKey = this.configService.get<string>('APIAI_API_KEY');
+    if (!apiaiKey || apiaiKey === 'vag_YOUR_API_KEY') {
+      throw new BadRequestException('APIAI_API_KEY chưa được cấu hình. Vui lòng liên hệ admin.');
+    }
+
+    // --- Quick checks: subscription & credits ---
+    const profile = await this.usageService.getProfile(userId);
+    if (!profile || profile.subscription_tier === 'free') {
+      throw new BadRequestException('Tính năng tạo video B-Roll chỉ dành cho tài khoản tháng (Pro/Premium).');
+    }
+    const totalCredits = (profile.credit_balance || 0) + (profile.monthly_credit_balance || 0);
+    if (totalCredits < 2) {
+      throw new BadRequestException('Bạn cần ít nhất 2 lượt sử dụng để tạo video B-Roll.');
+    }
+
+    // --- Create job record immediately (status: processing) ---
+    const internalJobId = require('crypto').randomUUID() as string;
+    const supabase = this.supabaseService.getAdminClient();
+    await supabase.from('broll_history').insert({
+      user_id: userId,
+      job_id: internalJobId,
+      product_url: productUrl,
+      status: 'processing',
+    });
+
+    // --- Deduct 2 credits immediately ---
+    await this.usageService.incrementUsage(userId).catch(() => { });
+    await this.usageService.incrementUsage(userId).catch(() => { });
+
+    this.logger.log(`[BRoll] Job created immediately. internalJobId=${internalJobId}, userId=${userId}`);
+
+    // --- Fire-and-forget: run all heavy processing in background ---
+    setImmediate(async () => {
+      try {
+        // 1. Fetch product info
+        const productInfo = await this.fetchProductInfoWithFallbacks(productUrl, userId);
+
+        // 2. Gemini: generate video prompt + image edit prompt
+        const systemPrompt = `You are an Expert AI Video Director specializing in 8-second TikTok B-Roll clips. Your job is to write a video prompt that shows a product's benefit so clearly and dramatically that a viewer immediately wants to buy it.
+
+## STEP 1 — CLASSIFY THE PRODUCT
+Before writing anything, identify the product category from the image and description. Pick EXACTLY ONE:
+- [RUST/CORROSION REMOVER] — product that removes rust, corrosion, oxidation from metal
+- [CLEANING SPRAY/LIQUID] — product that cleans surfaces: floors, glass, tiles, fabric
+- [SHOE/FOOTWEAR] — shoes, sandals, sneakers worn on feet
+- [SKINCARE] — cream, serum, lotion applied to skin
+- [HAIR CARE] — shampoo, conditioner, hair oil applied to hair
+- [FOOD/DRINK] — consumable product that is eaten or drunk
+- [LUBRICANT/OIL] — product applied to mechanical parts to reduce friction
+- [OTHER] — use your best judgment
+
+## STEP 2 — APPLY CATEGORY-SPECIFIC RULES
+
+### [RUST/CORROSION REMOVER]
+- BEFORE (0s–1s): Close-up of a HEAVILY rusted surface. The rust must be vivid and ugly — orange-brown flakes, thick corrosion on a metal object (motorbike chain, rusty bolt, corroded gate hinge, car exhaust pipe joint). The rust must look severe and real.
+- ACTION (1s–6s): A HAND holds the product bottle and SPRAYS it directly onto the rusty surface (trigger spray, NOT poured). White foam immediately bubbles up aggressively on contact with the rust. The foam fizzes and dissolves the rust visibly.
+- AFTER (6s–8s): A cloth wipes away the foam — revealing clean, SHINY, bright metal underneath. The contrast is DRAMATIC — from ugly rust to mirror-like clean metal. Hold on the clean surface for 2 full seconds.
+- STRICT: DO NOT pour the liquid on the ground. DO NOT rub without first spraying. The spray-then-foam-then-reveal sequence is mandatory.
+
+### [CLEANING SPRAY/LIQUID]
+- BEFORE (0s–1s): Close-up of the dirty surface — visible grease stains, grime, muddy spots, or soap scum on tile/floor/glass. Must look clearly dirty.
+- ACTION (1s–6s): Hand sprays the product directly onto the dirty area. The liquid spreads and a cloth or sponge scrubs the stain.
+- AFTER (6s–8s): The cloth moves away revealing a SPOTLESSLY CLEAN, bright surface. The cleaned area is noticeably shinier and completely stain-free. Hold 2 full seconds.
+
+### [SHOE/FOOTWEAR]
+- BEFORE (0s–1s): A bare or socked foot, or the shoe sitting idle.
+- ACTION (1s–6s): The foot slides smoothly into the shoe, laces up if needed. Person stands up and takes their first confident steps on a real floor (wood, street, concrete).
+- AFTER (6s–8s): Medium shot of the feet walking naturally — the gait looks comfortable and stylish. The shoe fits perfectly. Hold 2 full seconds on the walking shot.
+
+### [SKINCARE]
+- BEFORE (0s–1s): Close-up of dry, dull, or uneven skin on cheek or arm. The skin texture looks rough or dry.
+- ACTION (1s–6s): Fingertip scoops a small amount of cream/serum from the jar. Applies gently to the skin with circular motions. The product absorbs visibly.
+- AFTER (6s–8s): The skin looks noticeably SMOOTHER, PLUMPER, and more radiant. The texture evens out. Hold 2 full seconds on the glowing skin.
+
+### [HAIR CARE]
+- BEFORE (0s–1s): Close-up of dry, frizzy, or dull hair strands.
+- ACTION (1s–6s): Product is applied to wet or dry hair. Fingers or a comb work through the hair.
+- AFTER (6s–8s): Hair looks shiny, smooth, and healthy. Strands fall perfectly. Hold 2 full seconds.
+
+### [FOOD/DRINK]
+- BEFORE (0s–1s): The product container is shown — bottle, pack, or cup — in a natural setting (kitchen counter, café table).
+- ACTION (1s–6s): Person opens, pours, or prepares the product. The liquid pours or steam rises. The aroma is implied.
+- AFTER (6s–8s): Person takes a sip or bite and reacts with genuine satisfaction — slight smile, eyes closing. Hold 2 full seconds on that moment of enjoyment.
+
+### [LUBRICANT/OIL]
+- BEFORE (0s–1s): A stiff, rusty, or squeaky mechanical part — chain, hinge, gear — that looks worn.
+- ACTION (1s–6s): A few drops of the product are applied precisely to the part. The liquid spreads and penetrates.
+- AFTER (6s–8s): The part moves with zero resistance — chain spins smoothly, hinge opens silently. Hold 2 full seconds on the smooth movement.
+
+### [OTHER]
+- Apply the same BEFORE → ACTION → AFTER structure using your best judgment for this specific product.
+
+## STEP 3 — WRITE THE VIDEO PROMPT
+Now write ONE paragraph following these rules:
+- Include explicit time cues in the prompt: describe what happens at 0–1s, 1–6s, and 6–8s
+- The BEFORE state must look genuinely problematic (heavy rust, very dirty, clearly worn)
+- The AFTER state must look dramatically better — the contrast should be impossible to miss
+- Realistic, phone-camera aesthetic: natural light, handheld, real environment
+- Close-up to medium shot. No studio. No text overlays. No voiceover.
+
+---
+## OUTPUT 2 — "image_edit_prompt"
+A short direct instruction for an image-editing AI:
+(a) Remove all distracting backgrounds, hands, watermarks, shop logos.
+(b) Keep the product 100% identical — same shape, label, colors, logo.
+(c) Place it on a clean, contextually appropriate background (rusty surface nearby for rust remover, bathroom shelf for skincare, wooden floor for shoes).
+
+---
+## OUTPUT FORMAT
+Return ONLY a valid JSON object, no markdown or extra text:
+{
+  "video_prompt": "[One paragraph describing the 8-second shot with explicit 0-1s/1-6s/6-8s time cues, dramatic before and after contrast]",
+  "image_edit_prompt": "[Short direct editing instruction]"
+}`;
+
+        const productInfoText = `Product Name: ${productInfo.productName}\nDescription: ${productInfo.description}\nPrice: ${productInfo.price}\nCover Image URL: ${productInfo.coverUrl}`;
+        const geminiParts: any[] = [{ text: `${systemPrompt}\n\nPRODUCT INFO:\n${productInfoText}` }];
+
+        if (productInfo.coverUrl) {
+          try {
+            const imgRes = await fetch(productInfo.coverUrl);
+            if (imgRes.ok) {
+              const imgBuffer = await imgRes.arrayBuffer();
+              const imgBase64 = Buffer.from(imgBuffer).toString('base64');
+              const contentType = imgRes.headers.get('content-type') || 'image/webp';
+              geminiParts.push({ inlineData: { mimeType: contentType, data: imgBase64 } });
+            }
+          } catch (_) { }
+        }
+
+        let videoPrompt = '';
+        let imageEditPrompt = '';
+        const settings = await this.geminiService.getSettingsFromDb();
+        const geminiResult = await this.geminiService.generateContent(geminiParts, settings.model);
+        const raw = (geminiResult?.result as string || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const parsed = JSON.parse(raw);
+        videoPrompt = parsed.video_prompt;
+        imageEditPrompt = parsed.image_edit_prompt;
+        if (!videoPrompt) throw new Error('No video_prompt in response');
+        if (!imageEditPrompt) {
+          imageEditPrompt = `Remove distracting background, keep product identical, place on clean lifestyle background.`;
+        }
+
+        // Update video_prompt in DB
+        await supabase.from('broll_history').update({ video_prompt: videoPrompt }).eq('job_id', internalJobId);
+
+        // 3. Fetch & edit product image
+        let b64Image: string | undefined;
+        let imageMimeType: string | undefined;
+
+        if (productInfo.coverUrl) {
+          let productB64: string | undefined;
+          let productMime = 'image/jpeg';
+          try {
+            const origRes = await fetch(productInfo.coverUrl);
+            if (origRes.ok) {
+              const origBuf = await origRes.arrayBuffer();
+              productB64 = Buffer.from(origBuf).toString('base64');
+              productMime = origRes.headers.get('content-type') || 'image/jpeg';
+            }
+          } catch (e: any) {
+            this.logger.warn(`[BRoll][${internalJobId}] Failed to fetch original image: ${e.message}`);
+          }
+
+          if (productB64) {
+            try {
+              const editRes = await fetch('https://api.apiai.vn/api/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${apiaiKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'apiai-image-2',
+                  messages: [{
+                    role: 'user',
+                    content: [
+                      { type: 'text', text: imageEditPrompt + ' Output must be vertical 9:16 portrait orientation.' },
+                      { type: 'image_url', image_url: { url: `data:${productMime};base64,${productB64}` } },
+                    ],
+                  }],
+                  modalities: ['image', 'text'],
+                  size: '1024x1792',
+                  width: 1024,
+                  height: 1792,
+                  aspect_ratio: '9:16',
+                }),
+              });
+              if (editRes.ok) {
+                const editData = await editRes.json();
+                const msg = editData?.choices?.[0]?.message;
+                let editedUrl: string | undefined;
+                if (Array.isArray(msg?.images) && msg.images.length > 0) editedUrl = msg.images[0]?.image_url?.url;
+                if (!editedUrl && Array.isArray(msg?.content)) {
+                  for (const part of msg.content) {
+                    if (part.type === 'image_url' && part.image_url?.url) { editedUrl = part.image_url.url; break; }
+                  }
+                }
+                if (editedUrl) {
+                  if (editedUrl.startsWith('data:')) {
+                    const [header, data] = editedUrl.split(',');
+                    b64Image = data;
+                    imageMimeType = header.replace('data:', '').replace(';base64', '') || 'image/png';
+                  } else {
+                    const imgFetch = await fetch(editedUrl);
+                    if (imgFetch.ok) {
+                      b64Image = Buffer.from(await imgFetch.arrayBuffer()).toString('base64');
+                      imageMimeType = imgFetch.headers.get('content-type') || 'image/png';
+                    }
+                  }
+                }
+              }
+            } catch (editErr: any) {
+              this.logger.warn(`[BRoll][${internalJobId}] Image edit error: ${editErr.message}`);
+            }
+            if (!b64Image) { b64Image = productB64; imageMimeType = productMime; }
+          }
+        }
+
+        // 4. Submit to APIAI video generation
+        const body: any = {
+          model: 'apiai-veo-3.1-fast-720p-audio',
+          prompt: videoPrompt,
+          duration_seconds: 8,
+          aspect_ratio: '9:16',
+        };
+        if (b64Image && imageMimeType) body.image = { b64_json: b64Image, mime_type: imageMimeType };
+
+        const apiaiRes = await fetch('https://api.apiai.vn/api/v1/videos/generations', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiaiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!apiaiRes.ok) {
+          const errText = await apiaiRes.text();
+          throw new Error(`APIAI API lỗi (${apiaiRes.status}): ${errText}`);
+        }
+
+        const apiaiData = await apiaiRes.json();
+        const apiaiJobId = apiaiData?.id || apiaiData?.job_id;
+        if (!apiaiJobId) throw new Error('Không nhận được jobId từ APIAI.');
+
+        // Update broll_history: store APIAI job_id and set status to 'pending'
+        await supabase.from('broll_history').update({
+          apiai_job_id: apiaiJobId,
+          status: 'pending',
+        }).eq('job_id', internalJobId);
+
+        this.logger.log(`[BRoll] Background processing done. internalJobId=${internalJobId}, apiaiJobId=${apiaiJobId}`);
+      } catch (err: any) {
+        this.logger.error(`[BRoll][${internalJobId}] Background processing failed: ${err.message}`);
+        // Mark as failed + refund credits
+        const supabaseErr = this.supabaseService.getAdminClient();
+        await supabaseErr.from('broll_history').update({
+          status: 'failed',
+          error_message: err.message,
+        }).eq('job_id', internalJobId);
+        await this.usageService.refundCredit(userId).catch(() => { });
+        await this.usageService.refundCredit(userId).catch(() => { });
+      }
+    });
+
+    // Return immediately — frontend will poll using internalJobId
+    return { jobId: internalJobId };
+  }
+
+
+
+  /**
+   * Poll B-Roll video generation status.
+   * Uses internal jobId (from broll_history) as primary key.
+   * Handles: processing (background still running) | pending/completed/failed (from APIAI)
+   */
+  async getBRollVideoStatus(jobId: string, userId?: string): Promise<any> {
+    const apiaiKey = this.configService.get<string>('APIAI_API_KEY');
+    if (!apiaiKey) throw new BadRequestException('APIAI_API_KEY không được cấu hình.');
+
+    const supabase = this.supabaseService.getAdminClient();
+
+    // Look up broll_history by our internal job_id
+    const { data: historyRow } = await supabase
+      .from('broll_history')
+      .select('*')
+      .eq('job_id', jobId)
+      .single();
+
+    // If found: use broll_history as source of truth
+    if (historyRow) {
+      // Still in background processing (pre-APIAI submission)
+      if (historyRow.status === 'processing') {
+        return { status: 'processing', message: 'Video đang được phân tích và tạo, bạn có thể thoát ra làm việc khác...' };
+      }
+
+      // Processing failed before APIAI submission
+      if (historyRow.status === 'failed') {
+        return { status: 'failed', error: historyRow.error_message || 'Đã xảy ra lỗi trong quá trình xử lý.' };
+      }
+
+      // Has APIAI job ID: poll APIAI for video render status
+      const apiaiJobId = historyRow.apiai_job_id;
+      if (apiaiJobId) {
+        const res = await fetch(`https://api.apiai.vn/api/v1/videos/generations/${apiaiJobId}`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${apiaiKey}` },
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new BadRequestException(`APIAI status lỗi (${res.status}): ${errText}`);
+        }
+
+        const data = await res.json();
+
+        if (data.status === 'failed' || data.status === 'error') {
+          if (historyRow.status === 'pending') {
+            await supabase.from('broll_history').update({ status: 'failed' }).eq('job_id', jobId);
+            if (userId) {
+              await this.usageService.refundCredit(userId).catch(() => { });
+              await this.usageService.refundCredit(userId).catch(() => { });
+              this.logger.log(`[BRoll] Refunded 2 credits to ${userId} for failed jobId=${jobId}`);
+            }
+          }
+        } else if (data.status === 'completed') {
+          await supabase.from('broll_history').update({ status: 'completed' }).eq('job_id', jobId);
+        }
+
+        return data;
+      }
+
+      // apiai_job_id not yet set but status is pending — edge case, still processing
+      return { status: 'processing', message: 'Video đang được gửi lên hệ thống render...' };
+    }
+
+    // Fallback: if no broll_history row found, treat jobId as a direct APIAI job_id (legacy)
+    const res = await fetch(`https://api.apiai.vn/api/v1/videos/generations/${jobId}`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${apiaiKey}` },
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new BadRequestException(`APIAI status lỗi (${res.status}): ${errText}`);
+    }
+    return await res.json();
+  }
+
+  async proxyApiaiVideo(url: string, res: any) {
+    if (!url) throw new BadRequestException('URL là bắt buộc.');
+
+    const apiaiKey = this.configService.get<string>('APIAI_API_KEY');
+    if (!apiaiKey) {
+      throw new BadRequestException('APIAI_API_KEY chưa được cấu hình.');
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiaiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new BadRequestException('Không thể tải video từ APIAI');
+      }
+
+      res.setHeader('Content-Type', response.headers.get('content-type') || 'video/mp4');
+      res.setHeader('Content-Disposition', 'inline');
+
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (e: any) {
+      if (!res.headersSent) {
+        res.status(500).send(e.message);
+      }
     }
   }
 }

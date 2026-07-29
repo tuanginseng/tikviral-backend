@@ -336,5 +336,43 @@ export class VideoController {
     if (error) throw new BadRequestException('Kh\u00f4ng th\u1ec3 x\u00f3a gi\u1ecdng.');
     return { success: true };
   }
-}
 
+  /**
+   * Generate B-Roll video from product URL
+   */
+  @Post('broll-generate')
+  @UseGuards(SupabaseAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async generateBRoll(
+    @Req() req: any,
+    @Body() body: { productUrl: string },
+  ) {
+    const userId = req.user.id;
+    if (!body?.productUrl) throw new BadRequestException('productUrl là bắt buộc.');
+    return this.videoService.generateBRollVideo(body.productUrl, userId);
+  }
+
+  /**
+   * Poll B-Roll video generation status
+   */
+  @Get('broll-status/:jobId')
+  @UseGuards(SupabaseAuthGuard)
+  async getBRollStatus(
+    @Req() req: any,
+    @Param('jobId') jobId: string,
+  ) {
+    return this.videoService.getBRollVideoStatus(jobId, req.user.id);
+  }
+
+  /**
+   * Proxy endpoint for fetching APIAI video with Authorization
+   */
+  @Get('apiai-proxy')
+  @UseGuards(SupabaseAuthGuard)
+  async proxyApiaiVideo(
+    @Query('url') url: string,
+    @Res() res: any,
+  ) {
+    return this.videoService.proxyApiaiVideo(url, res);
+  }
+}
