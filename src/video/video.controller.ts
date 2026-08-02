@@ -345,11 +345,11 @@ export class VideoController {
   @HttpCode(HttpStatus.OK)
   async generateBRoll(
     @Req() req: any,
-    @Body() body: { productUrl: string },
+    @Body() body: { productUrl: string; customPrompt?: string },
   ) {
     const userId = req.user.id;
     if (!body?.productUrl) throw new BadRequestException('productUrl là bắt buộc.');
-    return this.videoService.generateBRollVideo(body.productUrl, userId);
+    return this.videoService.generateBRollVideo(body.productUrl, userId, body.customPrompt);
   }
 
   /**

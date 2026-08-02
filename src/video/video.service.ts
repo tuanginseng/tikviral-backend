@@ -1278,8 +1278,49 @@ export class VideoService {
 
     const productInfo = await this.fetchProductInfoWithFallbacks(productUrl, userId);
 
-    // 2. Build product info text
-    const productInfoText = JSON.stringify(productInfo, null, 2);
+    // 2. Build product info text — extract key fields for hook generation
+    const formatProductInfoForHook = (info: any): string => {
+      const lines: string[] = [];
+
+      // Tên sản phẩm
+      const name = info.productName || info.name || info.title || '';
+      if (name) lines.push(`Tên sản phẩm: ${name}`);
+
+      // Giá — ưu tiên productInfo field (SlideLabs format: "Giá 142,409 đ – 418,398 đ")
+      const rawPrice = info.price || info.priceRange || '';
+      if (rawPrice) lines.push(`Giá bán: ${rawPrice}`);
+
+      // Mô tả chi tiết — productInfo từ SlideLabs chứa mô tả đầy đủ nhất
+      const detailedInfo = info.productInfo || info.description || info.content || '';
+      if (detailedInfo) {
+        // Giới hạn độ dài để tránh ngốn quá nhiều token
+        const truncated = detailedInfo.length > 2000 ? detailedInfo.substring(0, 2000) + '...' : detailedInfo;
+        lines.push(`\nMô tả / Công dụng sản phẩm:\n${truncated}`);
+      }
+
+      // Danh mục / ngành hàng
+      const category = info.category || info.categoryName || info.categoryPath || '';
+      if (category) lines.push(`\nNgành hàng: ${Array.isArray(category) ? category.join(' > ') : category}`);
+
+      // Nhãn hiệu / thương hiệu
+      const brand = info.brand || info.brandName || info.shopName || info.seller?.name || '';
+      if (brand) lines.push(`Thương hiệu / Shop: ${brand}`);
+
+      // Tags / keywords nếu có
+      const tags = info.tags || info.keywords || [];
+      if (Array.isArray(tags) && tags.length > 0) {
+        lines.push(`Tags: ${tags.slice(0, 10).join(', ')}`);
+      }
+
+      // Đánh giá nếu có
+      const rating = info.rating || info.averageRating || info.score || '';
+      const reviewCount = info.reviewCount || info.totalReviews || info.sold || '';
+      if (rating) lines.push(`Đánh giá: ${rating}/5${reviewCount ? ` (${reviewCount} đánh giá/đã bán)` : ''}`);
+
+      return lines.join('\n');
+    };
+
+    const productInfoText = formatProductInfoForHook(productInfo);
 
     // 3. Build prompt
     const hookPrompt = `Bạn là chuyên gia viết kịch bản hook TikTok cho video affiliate (aff), được huấn luyện theo phương pháp luận của "Tikviral" — người có nhiều clip aff doanh số hơn 1 tỷ đồng. Nhiệm vụ của bạn: dựa vào thông tin sản phẩm dưới đây, tạo ra 20 HOOK (câu mở đầu video) khác nhau để người dùng quay video TikTok bán hàng.
@@ -1364,7 +1405,7 @@ Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, the
    * 4. Submit to apiai.vn for video generation
    * 5. Return jobId for polling
    */
-  async generateBRollVideo(productUrl: string, userId: string): Promise<any> {
+  async generateBRollVideo(productUrl: string, userId: string, customPrompt?: string): Promise<any> {
     if (!productUrl) throw new BadRequestException('productUrl là bắt buộc.');
 
     const apiaiKey = this.configService.get<string>('APIAI_API_KEY');
@@ -1378,8 +1419,8 @@ Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, the
       throw new BadRequestException('Tính năng tạo video B-Roll chỉ dành cho tài khoản tháng (Pro/Premium).');
     }
     const totalCredits = (profile.credit_balance || 0) + (profile.monthly_credit_balance || 0);
-    if (totalCredits < 2) {
-      throw new BadRequestException('Bạn cần ít nhất 2 lượt sử dụng để tạo video B-Roll.');
+    if (totalCredits < 5) {
+      throw new BadRequestException('Bạn cần ít nhất 5 lượt sử dụng để tạo video B-Roll.');
     }
 
     // --- Create job record immediately (status: processing) ---
@@ -1392,7 +1433,10 @@ Trả lời DUY NHẤT một JSON hợp lệ, không thêm text ngoài JSON, the
       status: 'processing',
     });
 
-    // --- Deduct 2 credits immediately ---
+    // --- Deduct 5 credits immediately ---
+    await this.usageService.incrementUsage(userId).catch(() => { });
+    await this.usageService.incrementUsage(userId).catch(() => { });
+    await this.usageService.incrementUsage(userId).catch(() => { });
     await this.usageService.incrementUsage(userId).catch(() => { });
     await this.usageService.incrementUsage(userId).catch(() => { });
 
@@ -1483,31 +1527,40 @@ Return ONLY a valid JSON object, no markdown or extra text:
 }`;
 
         const productInfoText = `Product Name: ${productInfo.productName}\nDescription: ${productInfo.description}\nPrice: ${productInfo.price}\nCover Image URL: ${productInfo.coverUrl}`;
-        const geminiParts: any[] = [{ text: `${systemPrompt}\n\nPRODUCT INFO:\n${productInfoText}` }];
-
-        if (productInfo.coverUrl) {
-          try {
-            const imgRes = await fetch(productInfo.coverUrl);
-            if (imgRes.ok) {
-              const imgBuffer = await imgRes.arrayBuffer();
-              const imgBase64 = Buffer.from(imgBuffer).toString('base64');
-              const contentType = imgRes.headers.get('content-type') || 'image/webp';
-              geminiParts.push({ inlineData: { mimeType: contentType, data: imgBase64 } });
-            }
-          } catch (_) { }
-        }
-
         let videoPrompt = '';
         let imageEditPrompt = '';
-        const settings = await this.geminiService.getSettingsFromDb();
-        const geminiResult = await this.geminiService.generateContent(geminiParts, settings.model);
-        const raw = (geminiResult?.result as string || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        const parsed = JSON.parse(raw);
-        videoPrompt = parsed.video_prompt;
-        imageEditPrompt = parsed.image_edit_prompt;
-        if (!videoPrompt) throw new Error('No video_prompt in response');
-        if (!imageEditPrompt) {
+
+        if (customPrompt && customPrompt.trim()) {
+          // Custom prompt mode: skip Gemini, use user-provided prompt directly
+          videoPrompt = customPrompt.trim();
           imageEditPrompt = `Remove distracting background, keep product identical, place on clean lifestyle background.`;
+          this.logger.log(`[BRoll] Using custom prompt (${videoPrompt.length} chars) for job ${internalJobId}`);
+        } else {
+          // Auto mode: generate prompt via Gemini
+          const geminiParts: any[] = [{ text: `${systemPrompt}\n\nPRODUCT INFO:\n${productInfoText}` }];
+
+          if (productInfo.coverUrl) {
+            try {
+              const imgRes = await fetch(productInfo.coverUrl);
+              if (imgRes.ok) {
+                const imgBuffer = await imgRes.arrayBuffer();
+                const imgBase64 = Buffer.from(imgBuffer).toString('base64');
+                const contentType = imgRes.headers.get('content-type') || 'image/webp';
+                geminiParts.push({ inlineData: { mimeType: contentType, data: imgBase64 } });
+              }
+            } catch (_) { }
+          }
+
+          const settings = await this.geminiService.getSettingsFromDb();
+          const geminiResult = await this.geminiService.generateContent(geminiParts, settings.model);
+          const raw = (geminiResult?.result as string || '').replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          const parsed = JSON.parse(raw);
+          videoPrompt = parsed.video_prompt;
+          imageEditPrompt = parsed.image_edit_prompt;
+          if (!videoPrompt) throw new Error('No video_prompt in response');
+          if (!imageEditPrompt) {
+            imageEditPrompt = `Remove distracting background, keep product identical, place on clean lifestyle background.`;
+          }
         }
 
         // Update video_prompt in DB
