@@ -425,7 +425,7 @@ export class UsageService {
   /**
    * Hoàn trả lại 1 credit cho user khi hủy tiến trình làm nét video
    */
-  async refundCredit(userId: string) {
+  async refundCredit(userId: string, amount: number = 1) {
     const supabase = this.supabaseService.getAdminClient();
     try {
       const { data: profile, error: getError } = await supabase
@@ -439,7 +439,7 @@ export class UsageService {
         return { success: false, error: 'Không tìm thấy profile' };
       }
 
-      const newBalance = (profile.monthly_credit_balance || 0) + 1;
+      const newBalance = (profile.monthly_credit_balance || 0) + amount;
       const updatePayload: any = {
         monthly_credit_balance: newBalance,
       };
@@ -458,7 +458,7 @@ export class UsageService {
         return { success: false, error: updateError.message };
       }
 
-      this.logger.log(`Successfully refunded 1 credit for user ${userId}. New monthly balance: ${newBalance}`);
+      this.logger.log(`Successfully refunded ${amount} credit(s) for user ${userId}. New monthly balance: ${newBalance}`);
       return { success: true };
     } catch (e: any) {
       this.logger.error(`refundCredit exception for user ${userId}: ${e.message}`);

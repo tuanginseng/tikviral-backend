@@ -1669,14 +1669,14 @@ Return ONLY a valid JSON object, no markdown or extra text:
         this.logger.log(`[BRoll] Background processing done. internalJobId=${internalJobId}, apiaiJobId=${apiaiJobId}`);
       } catch (err: any) {
         this.logger.error(`[BRoll][${internalJobId}] Background processing failed: ${err.message}`);
-        // Mark as failed + refund credits
+        // Mark as failed + refund all 5 credits
         const supabaseErr = this.supabaseService.getAdminClient();
         await supabaseErr.from('broll_history').update({
           status: 'failed',
           error_message: err.message,
         }).eq('job_id', internalJobId);
-        await this.usageService.refundCredit(userId).catch(() => { });
-        await this.usageService.refundCredit(userId).catch(() => { });
+        await this.usageService.refundCredit(userId, 5).catch(() => { });
+        this.logger.log(`[BRoll] Refunded 5 credits to ${userId} for failed jobId=${internalJobId}`);
       }
     });
 
@@ -1735,9 +1735,8 @@ Return ONLY a valid JSON object, no markdown or extra text:
           if (historyRow.status === 'pending') {
             await supabase.from('broll_history').update({ status: 'failed' }).eq('job_id', jobId);
             if (userId) {
-              await this.usageService.refundCredit(userId).catch(() => { });
-              await this.usageService.refundCredit(userId).catch(() => { });
-              this.logger.log(`[BRoll] Refunded 2 credits to ${userId} for failed jobId=${jobId}`);
+              await this.usageService.refundCredit(userId, 5).catch(() => { });
+              this.logger.log(`[BRoll] Refunded 5 credits to ${userId} for failed jobId=${jobId}`);
             }
           }
         } else if (data.status === 'completed') {
