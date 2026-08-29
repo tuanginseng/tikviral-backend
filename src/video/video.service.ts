@@ -4,6 +4,7 @@ import { UsageService } from '../usage/usage.service';
 import { SupabaseService } from '../supabase/supabase.service';
 import { GeminiService, FALLBACK_MODEL } from '../gemini/gemini.service';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -1118,19 +1119,36 @@ export class VideoService {
     // 0. Chuẩn hóa URL sản phẩm (lấy ID và chuyển về dạng chuẩn https://www.tiktok.com/view/product/{id})
     let finalProductUrl = productUrl;
     try {
-      const redirectRes = await fetch(productUrl, {
+      // Dùng proxy VN để tránh bị TikTok redirect sang not_supported_region trên VPS
+      const proxyUrl = this.configService.get<string>('TIKTOK_PROXY_URL');
+      const fetchOptions: RequestInit & { agent?: any } = {
         method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
-      });
+      };
+      if (proxyUrl) {
+        fetchOptions.agent = new HttpsProxyAgent(proxyUrl);
+        this.logger.log(`[Hooks] Using proxy to resolve product URL`);
+      }
+      const redirectRes = await fetch(productUrl, fetchOptions);
       const resolvedUrl = redirectRes.url || productUrl;
-      const match = resolvedUrl.match(/\/(?:pdp|product)\/(\d+)/);
-      if (match && match[1]) {
-        finalProductUrl = `https://www.tiktok.com/view/product/${match[1]}`;
+
+      // Kiểm tra nếu vẫn bị redirect sang not_supported_region
+      const isRegionBlocked = resolvedUrl.includes('not_supported_region') || resolvedUrl.includes('source=product_detail');
+      if (isRegionBlocked) {
+        this.logger.warn(`[Hooks] Region-blocked even with proxy, URL: ${resolvedUrl}`);
+      }
+
+      const match = !isRegionBlocked && resolvedUrl.match(/\/(?:pdp|product)\/(\d+)/);
+      const matchOriginal = productUrl.match(/\/(?:pdp|product)\/(\d+)/);
+      const productId = (match && match[1]) || (matchOriginal && matchOriginal[1]);
+
+      if (productId) {
+        finalProductUrl = `https://www.tiktok.com/view/product/${productId}`;
         this.logger.log(`[Hooks] Normalized product URL: ${productUrl} -> ${finalProductUrl}`);
       } else {
-        finalProductUrl = resolvedUrl;
+        finalProductUrl = isRegionBlocked ? productUrl : resolvedUrl;
       }
     } catch (e: any) {
       this.logger.warn(`[Hooks] Failed to normalize product URL ${productUrl}: ${e.message}`);
