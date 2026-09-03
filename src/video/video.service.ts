@@ -1164,7 +1164,7 @@ export class VideoService {
         headers: {
           'accept': 'application/json, text/plain, */*',
           'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
-          'authorization': 'Bearer eyJhbGciOiJFZERTQSIsImtpZCI6ImU3MzU0ZWI1LWM4MjEtNDA4NC05ZGY2LWFhYzVkNWU5OGRlMiJ9.eyJpYXQiOjE3ODc2MjIyMzcsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwiZW1haWxWZXJpZmllZCI6dHJ1ZSwiY3JlYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwidXBkYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJiYW5uZWQiOmZhbHNlLCJiYW5SZWFzb24iOm51bGwsImJhbkV4cGlyZXMiOm51bGwsImlkIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwic3ViIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwiZXhwIjoxNzg3NjIzMTM3LCJpc3MiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2giLCJhdWQiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2gifQ.iorv9qjlGEXzR_RDOCT2wyrn9X9VAHdjyJhXmxzIIIP_5u8T1HAQ64IyUr4CVylyLPM7Rt1Bb0nHG4unTZNEAA',
+          'authorization': 'Bearer eyJhbGciOiJFZERTQSIsImtpZCI6ImU3MzU0ZWI1LWM4MjEtNDA4NC05ZGY2LWFhYzVkNWU5OGRlMiJ9.eyJpYXQiOjE3ODg0MzI3MDMsIm5hbWUiOiJ0dWFuIGhvYW5nIiwiZW1haWwiOiJ0dWFuZ2luc2VuZzFAZ21haWwuY29tIiwiZW1haWxWZXJpZmllZCI6dHJ1ZSwiY3JlYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwidXBkYXRlZEF0IjoiMjAyNi0wNy0xNVQwNDo0NTo0OC41ODNaIiwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJiYW5uZWQiOmZhbHNlLCJiYW5SZWFzb24iOm51bGwsImJhbkV4cGlyZXMiOm51bGwsImlkIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwic3ViIjoiZjMwODQ3YmYtY2IzNS00M2M5LWE5NDMtZDU0ZDhlZjA4MmJmIiwiZXhwIjoxNzg4NDMzNjAzLCJpc3MiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2giLCJhdWQiOiJodHRwczovL2VwLW9yYW5nZS10aHVuZGVyLWExNWVyNThsLm5lb25hdXRoLmFwLXNvdXRoZWFzdC0xLmF3cy5uZW9uLnRlY2gifQ.aZhx0T20BnMUTgh6nawntwUz-ttME2nGvUk9wMSigdBsL5HmdbCe-bW1Pcj-8OvIdiV2FDxX8olZYM12NYyhCw',
           'cache-control': 'no-cache',
           'content-type': 'application/json',
           'dnt': '1',
@@ -1179,7 +1179,7 @@ export class VideoService {
           'sec-fetch-mode': 'cors',
           'sec-fetch-site': 'same-site',
           'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-          'x-session-id': 'e50bdff4-b1b6-4f16-a2c7-3401f1a9ab85',
+          'x-session-id': 'cf6a8acf-4e36-423d-a8a6-a1ac4127e378',
           'Cookie': '__Secure-neon-auth.session_challange=72956f2f75af273863f45c1f5a5c16d942245662ae1ed0e736748835cd85ea89.yR1SUFPtt%2Fbpkyz27nZdDIcSN0swulj0QH8M2bZUSJg%3D; ph_phc_grwL1MkkuOhGrtuZ8GEa0n7ai6IzpzXjSlrPUerMS0N_posthog=%7B%22%24device_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22distinct_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22%24sesid%22%3A%5B1784708084073%2C%22019f88e1-f110-708c-8262-3d2e8215c8db%22%2C1784707936526%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwww.slidelabs.net%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D'
         },
         body: JSON.stringify({ url: finalProductUrl }),

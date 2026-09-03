@@ -164,11 +164,31 @@ export class UsageController {
         plan_tier: body.plan_tier,
         amount: body.amount,
         expires_at: body.expires_at,
+        discount_code: body.discount_code,
+        discount_code_id: body.discount_code_id,
+        discount_amount: body.discount_amount,
       });
     } catch (error: any) {
       throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+  /** POST /usage/update-payment — Cập nhật thông tin payment transaction */
+  @Post('update-payment')
+  @HttpCode(HttpStatus.OK)
+  async updatePayment(@Req() req: any, @Body() body: any) {
+    try {
+      return await this.usageService.updatePaymentTransaction(req.user.id, body.transaction_id, {
+        amount: body.amount,
+        discount_code: body.discount_code,
+        discount_code_id: body.discount_code_id,
+        discount_amount: body.discount_amount,
+      });
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
 
   /** POST /usage/payment-status — Kiểm tra trạng thái payment */
   @Post('payment-status')

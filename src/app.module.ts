@@ -14,6 +14,7 @@ import { PaymentModule } from './payment/payment.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { InvoiceModule } from './invoice/invoice.module';
 import { ReportModule } from './report/report.module';
+import { DiscountModule } from './discount/discount.module';
 
 
 @Module({
@@ -33,6 +34,7 @@ import { ReportModule } from './report/report.module';
     UsageModule,
     PaymentModule,
     ReportModule,
+    DiscountModule,
   ],
   controllers: [AppController],
   providers: [AppService],

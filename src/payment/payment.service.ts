@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { DiscountService } from '../discount/discount.service';
 import * as crypto from 'crypto';
 
 
@@ -30,6 +31,7 @@ export class PaymentService {
     private readonly supabaseService: SupabaseService,
     private readonly invoiceService: InvoiceService,
     private readonly telegramService: TelegramService,
+    private readonly discountService: DiscountService,
   ) { }
 
 
@@ -224,6 +226,13 @@ export class PaymentService {
     // Fire-and-forget: xuất hóa đơn + gửi Telegram sau khi thanh toán thành công
     // Không block response webhook nếu xuất hóa đơn lỗi
     setImmediate(() => {
+      // Ghi nhận sử dụng mã giảm giá nếu có
+      if (transaction.discount_code_id && transaction.discount_amount > 0) {
+        this.discountService
+          .applyCode(transaction.discount_code_id, transaction.user_id, transaction.id, transaction.discount_amount)
+          .catch((err) => this.logger.error(`[PaymentService] Lỗi applyCode: ${err.message}`));
+      }
+
       this.invoiceService
         .createInvoice({
           id: transaction.id,

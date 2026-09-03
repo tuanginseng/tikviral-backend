@@ -239,6 +239,9 @@ export class UsageService {
     plan_tier: string;
     amount: number;
     expires_at: string;
+    discount_code?: string;
+    discount_code_id?: string;
+    discount_amount?: number;
   }) {
     const supabase = this.supabaseService.getAdminClient();
     const { data, error } = await supabase
@@ -252,6 +255,34 @@ export class UsageService {
     }
     return data;
   }
+
+  async updatePaymentTransaction(userId: string, transactionId: string, payload: {
+    amount: number;
+    discount_code?: string;
+    discount_code_id?: string;
+    discount_amount?: number;
+  }) {
+    const supabase = this.supabaseService.getAdminClient();
+    const { data, error } = await supabase
+      .from('payment_transactions')
+      .update({
+        amount: payload.amount,
+        discount_code: payload.discount_code ?? null,
+        discount_code_id: payload.discount_code_id ?? null,
+        discount_amount: payload.discount_amount ?? 0,
+      })
+      .eq('id', transactionId)
+      .eq('user_id', userId)
+      .select('id')
+      .single();
+
+    if (error) {
+      this.logger.error('updatePaymentTransaction error: ' + error.message);
+      throw new Error(error.message);
+    }
+    return data;
+  }
+
 
   async getPaymentTransactionStatus(userId: string, transactionId: string) {
     const supabase = this.supabaseService.getAdminClient();
