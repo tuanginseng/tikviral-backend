@@ -53,7 +53,7 @@ export class SettingsService {
         throw new BadRequestException('keys array required');
       }
 
-      const sensitiveKeys = ['gemini_api_key', 'kalodata_cookie', 'maintenance_bypass_code'];
+      const sensitiveKeys = ['gemini_api_key', 'kalodata_cookie', 'maintenance_bypass_code', 'slidelabs_authorization', 'slidelabs_session_id'];
       const hasSensitive = keys.some((k: string) => sensitiveKeys.includes(k));
 
       if (hasSensitive && !this.verifyAdminToken(admin_token)) {

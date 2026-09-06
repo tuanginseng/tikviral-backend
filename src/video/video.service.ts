@@ -1158,42 +1158,58 @@ export class VideoService {
     let productInfo: any = null;
 
     try {
-      this.logger.log(`[Hooks] Trying SlideLabs first for: ${finalProductUrl}`);
-      const slideLabsResponse = await fetch('https://api-v1.slidelabs.net/api/creator/import-product', {
-        method: 'POST',
-        headers: {
-          'accept': 'application/json, text/plain, */*',
-          'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
-          'authorization': 'Bearer eyJhbGciOiJFZERTQSIsImtpZCI6ImU3MzU0ZWI1LWM4MjEtNDA4NC05ZGY2LWFhYzVkNWU5OGRlMiJ9.eyJpYXQiOjE3ODg3MDI2NjgsIm5hbWUiOiJM4bqhaSBMw6AgVHXhuqVuIMSQw6J5IiwiZW1haWwiOiJ0dWFuZ2luc2VuZ0BnbWFpbC5jb20iLCJlbWFpbFZlcmlmaWVkIjp0cnVlLCJjcmVhdGVkQXQiOiIyMDI2LTA5LTA2VDEzOjUxOjA2LjIyOFoiLCJ1cGRhdGVkQXQiOiIyMDI2LTA5LTA2VDEzOjUxOjA2LjIyOFoiLCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImJhbm5lZCI6ZmFsc2UsImJhblJlYXNvbiI6bnVsbCwiYmFuRXhwaXJlcyI6bnVsbCwiaWQiOiJhMWI3NzFmMi0wNmFmLTQ2NDctOTM1OC1kYTVhZWQwZWY4YWIiLCJzdWIiOiJhMWI3NzFmMi0wNmFmLTQ2NDctOTM1OC1kYTVhZWQwZWY4YWIiLCJleHAiOjE3ODg3MDM1NjgsImlzcyI6Imh0dHBzOi8vZXAtb3JhbmdlLXRodW5kZXItYTE1ZXI1OGwubmVvbmF1dGguYXAtc291dGhlYXN0LTEuYXdzLm5lb24udGVjaCIsImF1ZCI6Imh0dHBzOi8vZXAtb3JhbmdlLXRodW5kZXItYTE1ZXI1OGwubmVvbmF1dGguYXAtc291dGhlYXN0LTEuYXdzLm5lb24udGVjaCJ9.1B7VM8H11S5cIrOTnn2Ncjqj1y5QfVRONnfFUmSKPrxTiw7QxOrua9KQ8lclx3jzj-MkzhcLBVthJbet4RD5CA',
-          'cache-control': 'no-cache',
-          'content-type': 'application/json',
-          'dnt': '1',
-          'origin': 'https://www.slidelabs.net',
-          'pragma': 'no-cache',
-          'priority': 'u=1, i',
-          'referer': 'https://www.slidelabs.net/',
-          'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
-          'sec-ch-ua-mobile': '?0',
-          'sec-ch-ua-platform': '"macOS"',
-          'sec-fetch-dest': 'empty',
-          'sec-fetch-mode': 'cors',
-          'sec-fetch-site': 'same-site',
-          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-          'x-session-id': '44c4ed4e-ac1f-4a21-a6fc-0b887a0c9db1',
-          'Cookie': '__Secure-neon-auth.session_challange=72956f2f75af273863f45c1f5a5c16d942245662ae1ed0e736748835cd85ea89.yR1SUFPtt%2Fbpkyz27nZdDIcSN0swulj0QH8M2bZUSJg%3D; ph_phc_grwL1MkkuOhGrtuZ8GEa0n7ai6IzpzXjSlrPUerMS0N_posthog=%7B%22%24device_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22distinct_id%22%3A%22019f6417-a0b5-78c0-994b-3f05aa9b51e8%22%2C%22%24sesid%22%3A%5B1784708084073%2C%22019f88e1-f110-708c-8262-3d2e8215c8db%22%2C1784707936526%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fwww.slidelabs.net%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D'
-        },
-        body: JSON.stringify({ url: finalProductUrl }),
-      });
+      // Đọc SlideLabs credentials từ database
+      const adminClient = this.supabaseService.getAdminClient();
+      const { data: slSettings } = await adminClient
+        .from('admin_settings')
+        .select('setting_key, setting_value')
+        .in('setting_key', ['slidelabs_authorization', 'slidelabs_session_id']);
 
-      if (slideLabsResponse.ok) {
-        const slideLabsData = await slideLabsResponse.json();
-        if (slideLabsData && slideLabsData.productName) {
-          // Normalize: map images[0].url -> coverUrl for consistent downstream usage
-          if (!slideLabsData.coverUrl && Array.isArray(slideLabsData.images) && slideLabsData.images.length > 0) {
-            slideLabsData.coverUrl = slideLabsData.images[0].url;
+      const slCreds: Record<string, string> = {};
+      slSettings?.forEach((s: any) => { slCreds[s.setting_key] = s.setting_value; });
+
+      const slAuth = slCreds['slidelabs_authorization'] || '';
+      const slSessionId = slCreds['slidelabs_session_id'] || '';
+
+      if (!slAuth || !slSessionId) {
+        this.logger.warn(`[Hooks] SlideLabs credentials not configured in admin_settings. Skipping SlideLabs.`);
+      } else {
+        this.logger.log(`[Hooks] Trying SlideLabs first for: ${finalProductUrl}`);
+        const slideLabsResponse = await fetch('https://api-v1.slidelabs.net/api/creator/import-product', {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json, text/plain, */*',
+            'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
+            'authorization': `Bearer ${slAuth}`,
+            'cache-control': 'no-cache',
+            'content-type': 'application/json',
+            'dnt': '1',
+            'origin': 'https://www.slidelabs.net',
+            'pragma': 'no-cache',
+            'priority': 'u=1, i',
+            'referer': 'https://www.slidelabs.net/',
+            'sec-ch-ua': '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"macOS"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-site',
+            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+            'x-session-id': slSessionId,
+          },
+          body: JSON.stringify({ url: finalProductUrl }),
+        });
+
+        if (slideLabsResponse.ok) {
+          const slideLabsData = await slideLabsResponse.json();
+          if (slideLabsData && slideLabsData.productName) {
+            // Normalize: map images[0].url -> coverUrl for consistent downstream usage
+            if (!slideLabsData.coverUrl && Array.isArray(slideLabsData.images) && slideLabsData.images.length > 0) {
+              slideLabsData.coverUrl = slideLabsData.images[0].url;
+            }
+            productInfo = slideLabsData;
+            this.logger.log(`[Hooks] Successfully fetched product info from SlideLabs for ${finalProductUrl}`);
           }
-          productInfo = slideLabsData;
-          this.logger.log(`[Hooks] Successfully fetched product info from SlideLabs for ${finalProductUrl}`);
         }
       }
     } catch (slideLabsError: any) {
