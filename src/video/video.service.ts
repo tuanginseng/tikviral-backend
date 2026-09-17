@@ -5,6 +5,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { GeminiService, FALLBACK_MODEL } from '../gemini/gemini.service';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import { ProxyAgent } from 'undici';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -1121,14 +1122,16 @@ export class VideoService {
     try {
       // Dùng proxy VN để tránh bị TikTok redirect sang not_supported_region trên VPS
       const proxyUrl = this.configService.get<string>('TIKTOK_PROXY_URL');
-      const fetchOptions: RequestInit & { agent?: any } = {
+      // NOTE: Node.js native fetch KHÔNG hỗ trợ option `agent` (đó là API của node-fetch cũ).
+      // Phải dùng `dispatcher` với undici ProxyAgent để proxy thực sự hoạt động.
+      const fetchOptions: RequestInit & { dispatcher?: any } = {
         method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
       };
       if (proxyUrl) {
-        fetchOptions.agent = new HttpsProxyAgent(proxyUrl);
+        fetchOptions.dispatcher = new ProxyAgent(proxyUrl);
         this.logger.log(`[Hooks] Using proxy to resolve product URL`);
       }
       const redirectRes = await fetch(productUrl, fetchOptions);
