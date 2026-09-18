@@ -1119,36 +1119,76 @@ export class VideoService {
     // 0. Chuẩn hóa URL sản phẩm (lấy ID và chuyển về dạng chuẩn https://www.tiktok.com/view/product/{id})
     let finalProductUrl = productUrl;
     try {
-      // Dùng proxy VN để tránh bị TikTok redirect sang not_supported_region trên VPS
       const proxyUrl = this.configService.get<string>('TIKTOK_PROXY_URL');
-      const fetchOptions: RequestInit & { agent?: any } = {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
+
+      const baseHeaders = {
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+        'Accept-Language': 'vi-VN,vi;q=0.9',
       };
-      if (proxyUrl) {
-        fetchOptions.agent = new HttpsProxyAgent(proxyUrl);
-        this.logger.log(`[Hooks] Using proxy to resolve product URL`);
-      }
-      const redirectRes = await fetch(productUrl, fetchOptions);
-      const resolvedUrl = redirectRes.url || productUrl;
 
-      // Kiểm tra nếu vẫn bị redirect sang not_supported_region
-      const isRegionBlocked = resolvedUrl.includes('not_supported_region') || resolvedUrl.includes('source=product_detail');
-      if (isRegionBlocked) {
-        this.logger.warn(`[Hooks] Region-blocked even with proxy, URL: ${resolvedUrl}`);
-      }
+      const extractProductId = (url: string): string | null => {
+        // Khớp /view/product/ID, /pdp/ID, /product/ID
+        const m = url.match(/\/(?:view\/product|pdp|product)\/(\d+)/);
+        return m ? m[1] : null;
+      };
 
-      const match = !isRegionBlocked && resolvedUrl.match(/\/(?:pdp|product)\/(\d+)/);
-      const matchOriginal = productUrl.match(/\/(?:pdp|product)\/(\d+)/);
-      const productId = (match && match[1]) || (matchOriginal && matchOriginal[1]);
+      const isBlocked = (url: string) =>
+        url.includes('not_supported_region') ||
+        url.includes('source=product_detail') ||
+        url === 'https://www.tiktok.com/' ||
+        url === 'https://www.tiktok.com/?_r=1';
+
+      // Thử từ URL gốc trước (không cần proxy — đôi khi TikTok cho phép)
+      let resolvedUrl = productUrl;
+      let productId = extractProductId(productUrl); // check URL gốc có ID chưa
+
+      if (!productId) {
+        // Lần 1: resolve không proxy
+        try {
+          const res1 = await fetch(productUrl, { method: 'GET', headers: baseHeaders });
+          const url1 = res1.url || productUrl;
+          this.logger.log(`[Hooks] Resolve (no proxy): ${productUrl} -> ${url1}`);
+          if (!isBlocked(url1)) {
+            resolvedUrl = url1;
+            productId = extractProductId(url1);
+          } else {
+            this.logger.warn(`[Hooks] No-proxy resolve blocked: ${url1}`);
+          }
+        } catch (e1: any) {
+          this.logger.warn(`[Hooks] No-proxy fetch failed: ${e1.message}`);
+        }
+
+        // Lần 2: nếu chưa có ID và có proxy → thử qua proxy
+        if (!productId && proxyUrl) {
+          try {
+            this.logger.log(`[Hooks] Retrying with proxy to resolve product URL`);
+            const res2 = await fetch(productUrl, {
+              method: 'GET',
+              headers: baseHeaders,
+              // @ts-ignore
+              agent: new HttpsProxyAgent(proxyUrl),
+            });
+            const url2 = res2.url || productUrl;
+            this.logger.log(`[Hooks] Resolve (proxy): ${productUrl} -> ${url2}`);
+            if (!isBlocked(url2)) {
+              resolvedUrl = url2;
+              productId = extractProductId(url2);
+            } else {
+              this.logger.warn(`[Hooks] Proxy resolve also blocked: ${url2}`);
+            }
+          } catch (e2: any) {
+            this.logger.warn(`[Hooks] Proxy fetch failed: ${e2.message}`);
+          }
+        }
+      }
 
       if (productId) {
         finalProductUrl = `https://www.tiktok.com/view/product/${productId}`;
         this.logger.log(`[Hooks] Normalized product URL: ${productUrl} -> ${finalProductUrl}`);
       } else {
-        finalProductUrl = isRegionBlocked ? productUrl : resolvedUrl;
+        // Giữ URL gốc — để SlideLabs/Kalodata thử xử lý
+        finalProductUrl = productUrl;
+        this.logger.warn(`[Hooks] Could not extract product ID from URL, using original: ${finalProductUrl}`);
       }
     } catch (e: any) {
       this.logger.warn(`[Hooks] Failed to normalize product URL ${productUrl}: ${e.message}`);
