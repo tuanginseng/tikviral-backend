@@ -5,6 +5,7 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { GeminiService, FALLBACK_MODEL } from '../gemini/gemini.service';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import fetch from 'node-fetch';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -1147,7 +1148,6 @@ export class VideoService {
         try {
           const res1 = await fetch(productUrl, { method: 'GET', headers: baseHeaders });
           const url1 = res1.url || productUrl;
-          this.logger.log(`[Hooks] Resolve (no proxy): ${productUrl} -> ${url1}`);
           if (!isBlocked(url1)) {
             resolvedUrl = url1;
             productId = extractProductId(url1);
@@ -1329,7 +1329,7 @@ export class VideoService {
               this.logger.log(`[Hooks] Kalodata using proxy: ${kaloProxyUrl}`);
             }
 
-            const kaloResponse = await fetch('https://www.kalodata.com/product/detail', kaloFetchOptions);
+            const kaloResponse = await fetch('https://www.kalodata.com/product/detail', kaloFetchOptions as any);
 
             if (kaloResponse.ok) {
               const kaloData = await kaloResponse.json();
@@ -1339,16 +1339,16 @@ export class VideoService {
                 // Ghép description từ productDesc array (chỉ lấy text nodes)
                 const description = Array.isArray(d.productDesc)
                   ? d.productDesc
-                      .filter((item: any) => item.type === 'text' && item.text)
-                      .map((item: any) => item.text)
-                      .join('\n')
+                    .filter((item: any) => item.type === 'text' && item.text)
+                    .map((item: any) => item.text)
+                    .join('\n')
                   : '';
 
                 // Lấy ảnh từ productDesc image nodes
                 const images = Array.isArray(d.productDesc)
                   ? d.productDesc
-                      .filter((item: any) => item.type === 'image' && item.image?.url_list?.length > 0)
-                      .map((item: any) => ({ url: item.image.url_list[0] }))
+                    .filter((item: any) => item.type === 'image' && item.image?.url_list?.length > 0)
+                    .map((item: any) => ({ url: item.image.url_list[0] }))
                   : [];
 
                 // Ghép category
