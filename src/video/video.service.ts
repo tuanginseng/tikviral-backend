@@ -1283,7 +1283,17 @@ export class VideoService {
             startDate.setDate(endDate.getDate() - 30);
             const fmt = (d: Date) => d.toISOString().split('T')[0];
 
-            const kaloResponse = await fetch('https://www.kalodata.com/product/detail', {
+            // Đọc proxy cho Kalodata — cf_clearance bị bind theo IP
+            // Dùng kalodata_proxy_url từ admin_settings nếu có, fallback về TIKTOK_PROXY_URL
+            const { data: kaloProxySetting } = await adminClient
+              .from('admin_settings')
+              .select('setting_value')
+              .eq('setting_key', 'kalodata_proxy_url')
+              .single();
+
+            const kaloProxyUrl = kaloProxySetting?.setting_value || this.configService.get<string>('TIKTOK_PROXY_URL') || '';
+
+            const kaloFetchOptions: RequestInit & { agent?: any } = {
               method: 'POST',
               headers: {
                 'accept': 'application/json, text/plain, */*',
@@ -1306,7 +1316,14 @@ export class VideoService {
                 endDate: fmt(endDate),
                 authority: true,
               }),
-            });
+            };
+
+            if (kaloProxyUrl) {
+              kaloFetchOptions.agent = new HttpsProxyAgent(kaloProxyUrl);
+              this.logger.log(`[Hooks] Kalodata using proxy: ${kaloProxyUrl}`);
+            }
+
+            const kaloResponse = await fetch('https://www.kalodata.com/product/detail', kaloFetchOptions);
 
             if (kaloResponse.ok) {
               const kaloData = await kaloResponse.json();
