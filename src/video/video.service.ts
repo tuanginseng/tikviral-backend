@@ -1213,10 +1213,127 @@ export class VideoService {
         }
       }
     } catch (slideLabsError: any) {
-      this.logger.warn(`[Hooks] SlideLabs API failed: ${slideLabsError.message}. Falling back to RapidAPI.`);
+      this.logger.warn(`[Hooks] SlideLabs API failed: ${slideLabsError.message}. Falling back to Kalodata.`);
     }
 
-    // 2. Second priority: RapidAPI
+    // 2. Second priority: Kalodata
+    if (!productInfo) {
+      const kaloIdMatch = finalProductUrl.match(/\/(?:pdp|product|view\/product)\/(\d+)/);
+      const kaloProductId = kaloIdMatch?.[1] ?? null;
+
+      if (kaloProductId) {
+        try {
+          this.logger.log(`[Hooks] Trying Kalodata for productId: ${kaloProductId}`);
+
+          // Đọc cookie từ admin_settings
+          const adminClient = this.supabaseService.getAdminClient();
+          const { data: kaloSettings } = await adminClient
+            .from('admin_settings')
+            .select('setting_key, setting_value')
+            .eq('setting_key', 'kalodata_cookie')
+            .single();
+
+          const kaloCookie = kaloSettings?.setting_value || '';
+          if (!kaloCookie) {
+            this.logger.warn(`[Hooks] kalodata_cookie not configured in admin_settings. Skipping Kalodata.`);
+          } else {
+            // Tính date range 30 ngày gần nhất
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(endDate.getDate() - 30);
+            const fmt = (d: Date) => d.toISOString().split('T')[0];
+
+            const kaloResponse = await fetch('https://www.kalodata.com/product/detail', {
+              method: 'POST',
+              headers: {
+                'accept': 'application/json, text/plain, */*',
+                'accept-language': 'vi,vi-VN;q=0.9,fr-FR;q=0.8,fr;q=0.7,en-US;q=0.6,en;q=0.5',
+                'cache-control': 'no-cache',
+                'content-type': 'application/json',
+                'country': 'VN',
+                'currency': 'VND',
+                'dnt': '1',
+                'language': 'vi-VN',
+                'origin': 'https://www.kalodata.com',
+                'pragma': 'no-cache',
+                'referer': `https://www.kalodata.com/product/detail?id=${kaloProductId}&language=vi-VN&currency=VND&region=VN`,
+                'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',
+                'cookie': kaloCookie,
+              },
+              body: JSON.stringify({
+                id: kaloProductId,
+                startDate: fmt(startDate),
+                endDate: fmt(endDate),
+                authority: true,
+              }),
+            });
+
+            if (kaloResponse.ok) {
+              const kaloData = await kaloResponse.json();
+              if (kaloData?.success && kaloData?.data?.product_title) {
+                const d = kaloData.data;
+
+                // Ghép description từ productDesc array (chỉ lấy text nodes)
+                const description = Array.isArray(d.productDesc)
+                  ? d.productDesc
+                      .filter((item: any) => item.type === 'text' && item.text)
+                      .map((item: any) => item.text)
+                      .join('\n')
+                  : '';
+
+                // Lấy ảnh từ productDesc image nodes
+                const images = Array.isArray(d.productDesc)
+                  ? d.productDesc
+                      .filter((item: any) => item.type === 'image' && item.image?.url_list?.length > 0)
+                      .map((item: any) => ({ url: item.image.url_list[0] }))
+                  : [];
+
+                // Ghép category
+                const category = [d.pri_cate_id, d.sec_cate_id, d.ter_cate_id]
+                  .filter(Boolean)
+                  .join(' > ');
+
+                // Price: ưu tiên unit_price, fallback min→max range
+                const price = d.unit_price || d.min_real_price || '';
+                const priceRange = (d.min_real_price && d.max_real_price && d.min_real_price !== d.max_real_price)
+                  ? `${d.min_real_price} – ${d.max_real_price}`
+                  : price;
+
+                productInfo = {
+                  productName: d.product_title,
+                  description,
+                  price,
+                  priceRange,
+                  coverUrl: images[0]?.url || '',
+                  images: images.length > 0 ? images : undefined,
+                  rating: d.product_rating,
+                  ratingCount: d.product_review_count || d.review_count,
+                  sellerName: d.name,
+                  brand: d.brand_name,
+                  category,
+                  skus: Array.isArray(d.skuInfo) ? d.skuInfo.map((s: any) => ({
+                    id: s.sku_id,
+                    name: s.sku_name,
+                    price: s.price_val,
+                    stock: s.stock,
+                  })) : undefined,
+                  commissionRate: d.commission_rate,
+                  _source: 'kalodata',
+                };
+                this.logger.log(`[Hooks] Successfully fetched product info from Kalodata for productId: ${kaloProductId}`);
+              }
+            } else {
+              this.logger.warn(`[Hooks] Kalodata returned HTTP ${kaloResponse.status}. Falling back to RapidAPI.`);
+            }
+          }
+        } catch (kaloError: any) {
+          this.logger.warn(`[Hooks] Kalodata API failed: ${kaloError.message}. Falling back to RapidAPI.`);
+        }
+      }
+    }
+
+    // 3. Third priority: RapidAPI
+
     if (!productInfo) {
       const directIdMatch = finalProductUrl.match(/\/(?:pdp|product|view\/product)\/(\d+)/);
       const knownProductId = directIdMatch?.[1] ?? null;
